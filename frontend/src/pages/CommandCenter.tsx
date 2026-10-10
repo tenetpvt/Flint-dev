@@ -322,6 +322,11 @@ export function CommandCenter() {
 
         map.addControl(new NavigationControl({ showCompass: false }), 'bottom-left');
         map.on('load', () => setMapReady(true));
+        map.on('styledata', () => {
+          if (map.isStyleLoaded()) {
+            setMapReady(true);
+          }
+        });
         if (map.isStyleLoaded()) {
           setMapReady(true);
         }
@@ -392,33 +397,41 @@ export function CommandCenter() {
     return () => window.removeEventListener('flint:new-survey-route', handleNewSurveyRoute);
   }, []);
 
-  // Auto-focus on primary route/journey on reload/mount
+  // Auto-focus on primary route/journey on reload/mount with style load fallback
   const hasAutoFittedRef = useRef<boolean>(false);
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady || hasAutoFittedRef.current) return;
+    if (!map || hasAutoFittedRef.current) return;
 
-    const primaryJourney = safeJourneys?.[0];
-    const targetRoute = primaryJourney?.route || safeRoutes?.[0];
-    if (targetRoute && targetRoute.geojson_path) {
-      try {
-        const coords = typeof targetRoute.geojson_path === 'string' ? JSON.parse(targetRoute.geojson_path) : targetRoute.geojson_path;
-        if (coords && coords.length > 1) {
-          const bounds = coords.reduce(
-            (b: any, coord: [number, number]) => b.extend(coord),
-            new LngLatBounds(coords[0], coords[0])
-          );
-          map.fitBounds(bounds, { padding: 80, maxZoom: 15, duration: 1500 });
-          hasAutoFittedRef.current = true;
-          setSelectedRouteId(targetRoute.id);
-          if (primaryJourney) {
-            setSelectedJourney(primaryJourney);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to auto-focus primary route on CC:', err);
+    const fitRoute = () => {
+      if (!map.isStyleLoaded()) {
+        map.once('styledata', fitRoute);
+        return;
       }
-    }
+      const primaryJourney = safeJourneys?.[0];
+      const targetRoute = primaryJourney?.route || safeRoutes?.[0];
+      if (targetRoute && targetRoute.geojson_path) {
+        try {
+          const coords = typeof targetRoute.geojson_path === 'string' ? JSON.parse(targetRoute.geojson_path) : targetRoute.geojson_path;
+          if (coords && coords.length > 1) {
+            const bounds = coords.reduce(
+              (b: any, coord: [number, number]) => b.extend(coord),
+              new LngLatBounds(coords[0], coords[0])
+            );
+            map.fitBounds(bounds, { padding: 80, maxZoom: 15, duration: 1500 });
+            hasAutoFittedRef.current = true;
+            setSelectedRouteId(targetRoute.id);
+            if (primaryJourney) {
+              setSelectedJourney(primaryJourney);
+            }
+          }
+        } catch (err) {
+          console.error('Failed to auto-focus primary route on CC:', err);
+        }
+      }
+    };
+
+    fitRoute();
   }, [mapReady, safeRoutes, safeJourneys]);
 
   // Listen for window resize / sidebar toggle
@@ -432,174 +445,241 @@ export function CommandCenter() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Render Route Lines + Wide Invisible Click Hitbox Layers with Google Maps Traffic Styling
+  // Render Guaranteed Route Lines (Baseline Corridor + Google Maps Traffic-Style Road Conditions)
   useEffect(() => {
     const map = mapRef.current;
-    const ready = map && (mapReady || map.isStyleLoaded());
-    if (!map || !ready || !safeRoutes || safeRoutes.length === 0) return;
+    if (!map || !safeRoutes || safeRoutes.length === 0) return;
 
-    const allDetections = safeJourneys.flatMap(j => j.detections || []);
-
-    safeRoutes.forEach(route => {
-      const sourceId = `cc-route-${route.id}`;
-      const haloLayerId = `cc-halo-${route.id}`;
-      const lineLayerId = `cc-layer-${route.id}`;
-      const hitboxLayerId = `cc-hitbox-${route.id}`;
-      const isSelected = selectedRouteId === route.id;
-      const primaryRouteId = safeRoutes?.[0]?.id || 1;
-      const isActiveCorridor = isSelected || (!selectedRouteId && route.id === primaryRouteId);
-
-      // Safely extract coordinates from either stringified or array representation
-      let coords: [number, number][] = [];
-      if (typeof route.geojson_path === 'string') {
-        try {
-          coords = JSON.parse(route.geojson_path);
-        } catch (e) {
-          console.error(`Error parsing geojson_path for route ${route.name}:`, e);
-        }
-      } else if (Array.isArray(route.geojson_path)) {
-        coords = route.geojson_path as any;
-      }
-
-      if (!coords || !Array.isArray(coords) || coords.length < 2) {
+    const renderRoutes = () => {
+      if (!map.isStyleLoaded()) {
+        map.once('styledata', renderRoutes);
         return;
       }
 
-      // Compute Google Maps traffic-style segments (50-70m radius)
-      const routeDets = safeJourneys.filter(j => j.route_id === route.id).flatMap(j => j.detections || []);
-      const trafficSegments = computePotholeTrafficSegments(coords, routeDets.length > 0 ? routeDets : allDetections, 60);
+      const allDetections = safeJourneys.flatMap(j => j.detections || []);
 
-      const featureCollection = {
-        type: 'FeatureCollection' as const,
-        features: trafficSegments.map(seg => ({
-          type: 'Feature' as const,
-          properties: {
-            color: seg.color,
-            potholeCount: seg.potholeCount,
-            statusLabel: seg.statusLabel,
-            routeId: route.id,
-          },
-          geometry: {
-            type: 'LineString' as const,
-            coordinates: seg.coordinates,
-          },
-        })),
-      };
+      safeRoutes.forEach(route => {
+        const baseSourceId = `cc-base-src-${route.id}`;
+        const baseCasingLayerId = `cc-base-casing-${route.id}`;
+        const baseCoreLayerId = `cc-base-core-${route.id}`;
+        const trafficSourceId = `cc-traffic-src-${route.id}`;
+        const trafficLineLayerId = `cc-traffic-line-${route.id}`;
+        const hitboxLayerId = `cc-hitbox-${route.id}`;
+        const isSelected = selectedRouteId === route.id;
+        const primaryRouteId = safeRoutes?.[0]?.id || 1;
+        const isActiveCorridor = isSelected || (!selectedRouteId && route.id === primaryRouteId);
 
-      // Add or update source
-      const existingSource = map.getSource(sourceId) as any;
-      if (!existingSource) {
-        try {
-          map.addSource(sourceId, {
-            type: 'geojson',
-            data: featureCollection,
-          });
-        } catch (e) {
-          console.error(`Error adding source ${sourceId}:`, e);
+        // Safely extract coordinates from either stringified or array representation
+        let coords: [number, number][] = [];
+        if (typeof route.geojson_path === 'string') {
+          try {
+            coords = JSON.parse(route.geojson_path);
+          } catch (e) {
+            console.error(`Error parsing geojson_path for route ${route.name}:`, e);
+          }
+        } else if (Array.isArray(route.geojson_path)) {
+          coords = route.geojson_path as any;
+        }
+
+        if (!coords || !Array.isArray(coords) || coords.length < 2) {
           return;
         }
-      } else {
-        try {
-          existingSource.setData(featureCollection);
-        } catch { /* ignore */ }
-      }
 
-      // Base dark casing underlay so colors pop on both light and satellite tiles
-      if (!map.getLayer(haloLayerId)) {
-        try {
-          map.addLayer({
-            id: haloLayerId,
-            type: 'line',
-            source: sourceId,
-            paint: {
-              'line-color': '#0f172a',
-              'line-width': isSelected ? 8.5 : 7.0,
-              'line-opacity': 0.55,
+        // 1. BASELINE UNBROKEN ROUTE CORRIDOR (Guarantees visible highway line at all times)
+        const baseFeatureCollection = {
+          type: 'FeatureCollection' as const,
+          features: [
+            {
+              type: 'Feature' as const,
+              properties: { routeId: route.id },
+              geometry: {
+                type: 'LineString' as const,
+                coordinates: coords,
+              },
             },
-            layout: {
-              'line-cap': 'round',
-              'line-join': 'round',
-            },
-          });
-        } catch { /* ignore */ }
-      }
+          ],
+        };
 
-      // Google Maps Traffic Color Line Layer (Green -> Orange -> Red -> Dark Red)
-      if (!map.getLayer(lineLayerId)) {
-        try {
-          map.addLayer({
-            id: lineLayerId,
-            type: 'line',
-            source: sourceId,
-            paint: {
-              'line-color': ['get', 'color'] as any,
-              'line-width': isSelected ? 6.5 : (isActiveCorridor ? 5.0 : 3.5),
-              'line-opacity': isSelected ? 1 : (isActiveCorridor ? 1.0 : 0.85),
-            },
-            layout: {
-              'line-cap': 'round',
-              'line-join': 'round',
-            },
-          });
-        } catch (e) {
-          console.error(`Error adding line layer ${lineLayerId}:`, e);
+        const existingBaseSource = map.getSource(baseSourceId) as any;
+        if (!existingBaseSource) {
+          try {
+            map.addSource(baseSourceId, {
+              type: 'geojson',
+              data: baseFeatureCollection,
+            });
+          } catch { /* ignore */ }
+        } else {
+          try {
+            existingBaseSource.setData(baseFeatureCollection);
+          } catch { /* ignore */ }
         }
-      } else {
-        map.setPaintProperty(lineLayerId, 'line-color', ['get', 'color'] as any);
-        map.setPaintProperty(lineLayerId, 'line-width', isSelected ? 6.5 : (isActiveCorridor ? 5.0 : 3.5));
-        map.setPaintProperty(lineLayerId, 'line-opacity', isSelected ? 1 : (isActiveCorridor ? 1.0 : 0.85));
-      }
 
-      // Hitbox layer for route selection
-      if (!map.getLayer(hitboxLayerId)) {
-        try {
-          map.addLayer({
-            id: hitboxLayerId,
-            type: 'line',
-            source: sourceId,
-            paint: {
-              'line-color': '#000000',
-              'line-width': 30,
-              'line-opacity': 0.001,
+        // Base Casing Layer (Dark underlay so line pops over both light map & satellite tiles)
+        if (!map.getLayer(baseCasingLayerId)) {
+          try {
+            map.addLayer({
+              id: baseCasingLayerId,
+              type: 'line',
+              source: baseSourceId,
+              paint: {
+                'line-color': '#0f172a',
+                'line-width': isSelected ? 9.5 : (isActiveCorridor ? 8.0 : 6.0),
+                'line-opacity': 0.85,
+              },
+              layout: {
+                'line-cap': 'round',
+                'line-join': 'round',
+              },
+            });
+          } catch { /* ignore */ }
+        } else {
+          map.setPaintProperty(baseCasingLayerId, 'line-width', isSelected ? 9.5 : (isActiveCorridor ? 8.0 : 6.0));
+        }
+
+        // Base Highway Core Layer (High-contrast cyan corridor)
+        if (!map.getLayer(baseCoreLayerId)) {
+          try {
+            map.addLayer({
+              id: baseCoreLayerId,
+              type: 'line',
+              source: baseSourceId,
+              paint: {
+                'line-color': '#0284c7',
+                'line-width': isSelected ? 7.0 : (isActiveCorridor ? 5.5 : 4.0),
+                'line-opacity': 0.9,
+              },
+              layout: {
+                'line-cap': 'round',
+                'line-join': 'round',
+              },
+            });
+          } catch { /* ignore */ }
+        } else {
+          map.setPaintProperty(baseCoreLayerId, 'line-width', isSelected ? 7.0 : (isActiveCorridor ? 5.5 : 4.0));
+        }
+
+        // 2. GOOGLE MAPS TRAFFIC / DEFECT SEGMENTS (Green -> Orange -> Red -> Burgundy)
+        const routeDets = safeJourneys.filter(j => j.route_id === route.id).flatMap(j => j.detections || []);
+        const trafficSegments = computePotholeTrafficSegments(coords, routeDets.length > 0 ? routeDets : allDetections, 60);
+
+        const trafficFeatureCollection = {
+          type: 'FeatureCollection' as const,
+          features: trafficSegments.map(seg => ({
+            type: 'Feature' as const,
+            properties: {
+              color: seg.color,
+              potholeCount: seg.potholeCount,
+              statusLabel: seg.statusLabel,
+              routeId: route.id,
             },
-          });
+            geometry: {
+              type: 'LineString' as const,
+              coordinates: seg.coordinates,
+            },
+          })),
+        };
 
-          const handleRouteSelect = () => {
-            setSelectedRouteId(route.id);
-            const matchingJourneys = safeJourneys.filter(j => j.route_id === route.id);
-            const j = matchingJourneys.sort((a, b) => (b.detections?.length || 0) - (a.detections?.length || 0))[0] || safeJourneys[0] || null;
-            setSelectedJourney(j);
-            if (j && j.detections && j.detections.length > 0) {
-              const det = j.detections[0];
-              setWorkOrderData({
-                ticketId: `PWD-RAI-2026-${String(det.id || 1042)}`,
-                defectType: det.type,
-                severity: det.severity as any,
-                lat: det.lat,
-                lon: det.lon,
-                streetName: `${j.route.name} (${j.route.description})`,
-                confidence: det.confidence || 0.94,
-                evidenceUrl: det.evidence_url,
-                videoTimestamp: (det as any)?.video_timestamp_sec,
-                trafficWeight: 3.0,
-                detectedAt: det.timestamp,
-                busId: j.bus.name,
-              });
-            }
-          };
+        const existingTrafficSource = map.getSource(trafficSourceId) as any;
+        if (!existingTrafficSource) {
+          try {
+            map.addSource(trafficSourceId, {
+              type: 'geojson',
+              data: trafficFeatureCollection,
+            });
+          } catch { /* ignore */ }
+        } else {
+          try {
+            existingTrafficSource.setData(trafficFeatureCollection);
+          } catch { /* ignore */ }
+        }
 
-          map.on('click', hitboxLayerId, handleRouteSelect);
-          map.on('click', lineLayerId, handleRouteSelect);
-          map.on('mouseenter', hitboxLayerId, () => {
-            map.getCanvas().style.cursor = 'pointer';
-          });
-          map.on('mouseleave', hitboxLayerId, () => {
-            map.getCanvas().style.cursor = '';
-          });
-        } catch { /* ignore */ }
-      }
-    });
-  }, [mapReady, safeRoutes, selectedRouteId, safeJourneys]);
+        // Dynamic Traffic Heatmap Line Layer with compiled to-color expression
+        const colorExpression: any = [
+          'case',
+          ['has', 'color'],
+          ['to-color', ['get', 'color']],
+          ['to-color', '#22c55e']
+        ];
+
+        if (!map.getLayer(trafficLineLayerId)) {
+          try {
+            map.addLayer({
+              id: trafficLineLayerId,
+              type: 'line',
+              source: trafficSourceId,
+              paint: {
+                'line-color': colorExpression,
+                'line-width': isSelected ? 6.5 : (isActiveCorridor ? 5.0 : 3.5),
+                'line-opacity': 1.0,
+              },
+              layout: {
+                'line-cap': 'round',
+                'line-join': 'round',
+              },
+            });
+          } catch (e) {
+            console.error(`Error adding traffic line layer ${trafficLineLayerId}:`, e);
+          }
+        } else {
+          map.setPaintProperty(trafficLineLayerId, 'line-color', colorExpression);
+          map.setPaintProperty(trafficLineLayerId, 'line-width', isSelected ? 6.5 : (isActiveCorridor ? 5.0 : 3.5));
+          map.setPaintProperty(trafficLineLayerId, 'line-opacity', 1.0);
+        }
+
+        // 3. 30px Wide Click Hitbox Layer
+        if (!map.getLayer(hitboxLayerId)) {
+          try {
+            map.addLayer({
+              id: hitboxLayerId,
+              type: 'line',
+              source: baseSourceId,
+              paint: {
+                'line-color': '#000000',
+                'line-width': 30,
+                'line-opacity': 0.001,
+              },
+            });
+
+            const handleRouteSelect = () => {
+              setSelectedRouteId(route.id);
+              const matchingJourneys = safeJourneys.filter(j => j.route_id === route.id);
+              const j = matchingJourneys.sort((a, b) => (b.detections?.length || 0) - (a.detections?.length || 0))[0] || safeJourneys[0] || null;
+              setSelectedJourney(j);
+              if (j && j.detections && j.detections.length > 0) {
+                const det = j.detections[0];
+                setWorkOrderData({
+                  ticketId: `PWD-RAI-2026-${String(det.id || 1042)}`,
+                  defectType: det.type,
+                  severity: det.severity as any,
+                  lat: det.lat,
+                  lon: det.lon,
+                  streetName: `${j.route.name} (${j.route.description})`,
+                  confidence: det.confidence || 0.94,
+                  evidenceUrl: det.evidence_url,
+                  videoTimestamp: (det as any)?.video_timestamp_sec,
+                  trafficWeight: 3.0,
+                  detectedAt: det.timestamp,
+                  busId: j.bus.name,
+                });
+              }
+            };
+
+            map.on('click', hitboxLayerId, handleRouteSelect);
+            map.on('click', baseCoreLayerId, handleRouteSelect);
+            map.on('click', trafficLineLayerId, handleRouteSelect);
+            map.on('mouseenter', hitboxLayerId, () => {
+              map.getCanvas().style.cursor = 'pointer';
+            });
+            map.on('mouseleave', hitboxLayerId, () => {
+              map.getCanvas().style.cursor = '';
+            });
+          } catch { /* ignore */ }
+        }
+      });
+    };
+
+    renderRoutes();
+  }, [mapReady, mapTheme, safeRoutes, selectedRouteId, safeJourneys]);
 
   // Render ONLY Active Bus Marker (Red round circular pothole markers completely removed)
   useEffect(() => {
