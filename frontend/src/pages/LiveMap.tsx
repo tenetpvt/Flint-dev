@@ -18,6 +18,16 @@ import type { WorkOrderData } from '../components/ui/WorkOrderModal';
 import { useLiveStream } from '../services/useLiveStream';
 import { computePotholeTrafficSegments } from '../utils/trafficHeatmap';
 
+// Parse Route 1 Coordinates for synchronized map tracking (Raipur NH-30 corridor)
+const RAW_ROUTE_COORDS: [number, number][] = (() => {
+  try {
+    const raw = MOCK_ROUTES[0]?.geojson_path;
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+})();
+
 function FleetPanel({ buses, journeys, selectedJourneyId, onSelectJourney }: {
   buses: Bus[];
   journeys: Journey[];
@@ -326,54 +336,47 @@ export function LiveMap() {
     return () => window.removeEventListener('flint:new-survey-route', handleNewSurveyRoute);
   }, []);
 
-  // Auto-focus on primary route/journey on reload/mount with style load fallback
+  // Auto-focus on primary route/journey on reload/mount
   const hasAutoFittedRef = useRef<boolean>(false);
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || hasAutoFittedRef.current) return;
+    if (!map || !mapReady || hasAutoFittedRef.current) return;
 
-    const fitRoute = () => {
-      if (!map.isStyleLoaded()) {
-        map.once('styledata', fitRoute);
-        return;
+    const primaryJourney = safeJourneys?.[0];
+    const targetRoute = primaryJourney?.route || safeRoutes?.[0];
+    let coords: [number, number][] = [];
+    if (targetRoute?.geojson_path) {
+      try {
+        coords = typeof targetRoute.geojson_path === 'string' ? JSON.parse(targetRoute.geojson_path) : targetRoute.geojson_path;
+      } catch {
+        coords = RAW_ROUTE_COORDS;
       }
-      const primaryJourney = safeJourneys?.[0];
-      const targetRoute = primaryJourney?.route || safeRoutes?.[0];
-      if (targetRoute && targetRoute.geojson_path) {
-        try {
-          const coords = typeof targetRoute.geojson_path === 'string' ? JSON.parse(targetRoute.geojson_path) : targetRoute.geojson_path;
-          if (coords && coords.length > 1) {
-            const bounds = coords.reduce(
-              (b: any, coord: [number, number]) => b.extend(coord),
-              new LngLatBounds(coords[0], coords[0])
-            );
-            map.fitBounds(bounds, { padding: 80, maxZoom: 15, duration: 1500 });
-            hasAutoFittedRef.current = true;
-            if (primaryJourney) {
-              setSelectedJourney(primaryJourney);
-            }
-          }
-        } catch (err) {
-          console.error('Failed to auto-focus primary route:', err);
+    }
+    if (!coords || coords.length < 2) coords = RAW_ROUTE_COORDS;
+
+    if (coords && coords.length > 1) {
+      try {
+        const bounds = coords.reduce(
+          (b: any, coord: [number, number]) => b.extend(coord),
+          new LngLatBounds(coords[0], coords[0])
+        );
+        map.fitBounds(bounds, { padding: 80, maxZoom: 15, duration: 1500 });
+        hasAutoFittedRef.current = true;
+        if (primaryJourney) {
+          setSelectedJourney(primaryJourney);
         }
+      } catch (err) {
+        console.error('Failed to auto-focus primary route:', err);
       }
-    };
-
-    fitRoute();
+    }
   }, [mapReady, safeRoutes, safeJourneys]);
 
   // Render Guaranteed Route Lines (Baseline Corridor + Google Maps Traffic-Style Road Conditions)
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !safeRoutes || safeRoutes.length === 0) return;
+    if (!map || !mapReady || !safeRoutes || safeRoutes.length === 0) return;
 
-    const renderRoutes = () => {
-      if (!map.isStyleLoaded()) {
-        map.once('styledata', renderRoutes);
-        return;
-      }
-
-      const allDetections = safeJourneys.flatMap(j => j.detections || []);
+    const allDetections = safeJourneys.flatMap(j => j.detections || []);
 
       safeRoutes.forEach(route => {
         const baseSourceId = `base-src-${route.id}`;
@@ -398,6 +401,7 @@ export function LiveMap() {
           coords = route.geojson_path as any;
         }
 
+        if (!coords || coords.length < 2) coords = RAW_ROUTE_COORDS;
         if (!coords || !Array.isArray(coords) || coords.length < 2) return;
 
         // 1. BASELINE UNBROKEN ROUTE CORRIDOR (Guarantees visible highway line at all times)
@@ -572,9 +576,6 @@ export function LiveMap() {
           } catch { /* ignore */ }
         }
       });
-    };
-
-    renderRoutes();
   }, [mapReady, mapTheme, safeRoutes, journeys, selectedJourney]);
 
   // Add detection markers
