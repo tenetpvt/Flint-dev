@@ -1,0 +1,10 @@
+{
+  "name": "flint-sih-root",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npm run dev --prefix frontend",
+    "build": "cd frontend && npm install && npm run build",
+    "install": "cd frontend && npm install"
+  }
+}

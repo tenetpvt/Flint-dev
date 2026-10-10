@@ -1,0 +1,70 @@
+# FLINT Edge Device Configuration
+device:
+  bus_id: "BUS-01"
+  route_id: "NH-30"
+  depot: "Raipur Central Depot"
+  gps_default:
+    lat: 21.2415
+    lon: 81.6335
+
+camera:
+  source: "edge/sample_drive.mp4"
+  sample_fps: 10
+  loop: true
+  width: 1280
+  height: 720
+  realtime: true
+
+roi:
+  enabled: true
+  # Horizon ratio: 0.22 scans lower 78% of road ahead (avoids cutting off distant road defects)
+  horizon_ratio: 0.22
+
+# Dual-Head Inference Engine
+detection:
+  # Hardware device: 0 for NVIDIA GPU (CUDA), "cpu" for CPU fallback
+  device: 0
+
+  # Road Surface Defect Specialist Head
+  defect:
+    enabled: true
+    model_path: "edge/models/flint_india_yolov8.pt"
+    confidence_threshold: 0.25
+    iou_threshold: 0.45
+    imgsz: 640
+    target_classes: null # Dual classes: 0: 'pothole', 1: 'crack'
+
+  # Traffic Congestion & Safety Specialist Head
+  traffic:
+    enabled: true
+    model_path: "yolov8n.pt"
+    confidence_threshold: 0.35
+    iou_threshold: 0.45
+    imgsz: 640
+    # COCO classes: 0=person, 1=bicycle, 2=car, 3=motorcycle, 5=bus, 7=truck
+    target_classes: [0, 1, 2, 3, 5, 7]
+
+congestion:
+  low_threshold: 3
+  moderate_threshold: 7
+
+tracking:
+  enabled: true
+  tracker_type: "bytetrack.yaml"
+  # Defects must be tracked across >= 2 frames before firing an alert (optimized for moving bus)
+  min_persistence_frames: 2
+  max_staleness_frames: 10
+
+optical_flow:
+  enabled: true
+  frame_delta_sec: 0.50
+  variance_threshold: 14.0
+
+backend:
+  enabled: true
+  api_url: "http://localhost:8000/api/ingest/detection"
+  journey_id: 1
+  timeout_seconds: 3
+  save_evidence: true
+  evidence_dir: "edge/evidence_crops"
+
