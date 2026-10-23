@@ -4,6 +4,7 @@ import type { Alert } from './alerts';
 import type { Route } from './routes';
 import type { Journey } from './journeys';
 import type { AnalyticsSummary } from './analytics';
+import { MOCK_ROUTES } from './mockData';
 
 export interface LiveTelemetryEvent {
   type: string;
@@ -32,10 +33,36 @@ export function useLiveStream() {
     let rawApiUrl = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
     const hasRemoteBackend = Boolean(rawApiUrl && !rawApiUrl.includes('localhost') && !rawApiUrl.includes('127.0.0.1'));
 
-    // In remote standalone deployment (Vercel) without external backend, run in standalone mode
+    // In remote standalone deployment (Vercel) without external backend, run client-side simulation ticker
     if (isRemote && !hasRemoteBackend) {
-      setIsConnected(false);
-      return;
+      setIsConnected(true);
+      let step = 0;
+      let rawCoords: [number, number][] = [];
+      try {
+        const raw = MOCK_ROUTES[0]?.geojson_path;
+        rawCoords = raw ? JSON.parse(raw) : [];
+      } catch {
+        rawCoords = [];
+      }
+
+      const ticker = setInterval(() => {
+        if (!rawCoords || rawCoords.length === 0) return;
+        step = (step + 1) % rawCoords.length;
+        const coords = rawCoords[step];
+        const payload: LiveTelemetryEvent = {
+          type: 'BUS_TELEMETRY',
+          bus: 'BUS-01',
+          route: 'NH-30 Raipur-Simga',
+          coordinates: coords,
+          step,
+          total_steps: rawCoords.length,
+          timestamp: new Date().toISOString(),
+        };
+        setLastTelemetry(payload);
+        window.dispatchEvent(new CustomEvent('flint:bus-telemetry', { detail: payload }));
+      }, 2500);
+
+      return () => clearInterval(ticker);
     }
 
     const effectiveApiUrl = (rawApiUrl || 'http://localhost:8000').replace(/\/+$/, '');
