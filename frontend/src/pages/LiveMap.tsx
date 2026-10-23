@@ -378,6 +378,10 @@ export function LiveMap() {
 
     const allDetections = safeJourneys.flatMap(j => j.detections || []);
 
+    // Defer layer creation to ensure WebGL context is fully ready after raster tile init
+    const renderLayers = () => {
+      const m = mapRef.current;
+      if (!m) return;
       safeRoutes.forEach(route => {
         const baseSourceId = `base-src-${route.id}`;
         const baseCasingLayerId = `base-casing-${route.id}`;
@@ -426,11 +430,11 @@ export function LiveMap() {
               type: 'geojson',
               data: baseFeatureCollection,
             });
-          } catch { /* ignore */ }
+          } catch (e) { console.warn('[FLINT Map] Layer operation skipped:', e); }
         } else {
           try {
             existingBaseSource.setData(baseFeatureCollection);
-          } catch { /* ignore */ }
+          } catch (e) { console.warn('[FLINT Map] Layer operation skipped:', e); }
         }
 
         // Base Casing Layer (Dark underlay so line pops over both light map & satellite tiles)
@@ -450,7 +454,7 @@ export function LiveMap() {
                 'line-join': 'round',
               },
             });
-          } catch { /* ignore */ }
+          } catch (e) { console.warn('[FLINT Map] Layer operation skipped:', e); }
         } else {
           map.setPaintProperty(baseCasingLayerId, 'line-width', isSelected ? 9.5 : (isActiveCorridor ? 8.0 : 6.0));
         }
@@ -472,7 +476,7 @@ export function LiveMap() {
                 'line-join': 'round',
               },
             });
-          } catch { /* ignore */ }
+          } catch (e) { console.warn('[FLINT Map] Layer operation skipped:', e); }
         } else {
           map.setPaintProperty(baseCoreLayerId, 'line-width', isSelected ? 7.0 : (isActiveCorridor ? 5.5 : 4.0));
         }
@@ -505,11 +509,11 @@ export function LiveMap() {
               type: 'geojson',
               data: trafficFeatureCollection,
             });
-          } catch { /* ignore */ }
+          } catch (e) { console.warn('[FLINT Map] Layer operation skipped:', e); }
         } else {
           try {
             existingTrafficSource.setData(trafficFeatureCollection);
-          } catch { /* ignore */ }
+          } catch (e) { console.warn('[FLINT Map] Layer operation skipped:', e); }
         }
 
         // Dynamic Traffic Heatmap Line Layer with compiled to-color expression
@@ -573,9 +577,22 @@ export function LiveMap() {
             map.on('mouseleave', hitboxLayerId, () => {
               map.getCanvas().style.cursor = '';
             });
-          } catch { /* ignore */ }
+          } catch (e) { console.warn('[FLINT Map] Layer operation skipped:', e); }
         }
       });
+    };
+
+    // Schedule: try immediately, and retry with backoff + on idle to handle raster basemap race conditions
+    renderLayers();
+    const t1 = window.setTimeout(renderLayers, 300);
+    const t2 = window.setTimeout(renderLayers, 1000);
+    const idleHandler = () => renderLayers();
+    map.once('idle', idleHandler);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      map.off('idle', idleHandler);
+    };
   }, [mapReady, mapTheme, safeRoutes, journeys, selectedJourney]);
 
   // Add detection markers
