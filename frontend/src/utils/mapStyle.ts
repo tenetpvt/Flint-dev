@@ -1,6 +1,7 @@
 import type { Map as MapLibreMap } from 'maplibre-gl';
 
-export const RAIPUR_CENTER: [number, number] = [81.6296, 21.2514];
+// Centered directly on the NH-30 Raipur-Simga corridor (coords: [81.6523, 21.1341] to [81.6697, 21.2080])
+export const RAIPUR_CENTER: [number, number] = [81.6610, 21.1711];
 
 export type MapTheme = 'default' | 'satellite';
 

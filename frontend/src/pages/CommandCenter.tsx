@@ -396,7 +396,8 @@ export function CommandCenter() {
             (b: any, coord: [number, number]) => b.extend(coord),
             new LngLatBounds(coords[0], coords[0])
           );
-          map.fitBounds(bounds, { padding: 80, maxZoom: 15, duration: 1800 });
+          map.resize();
+          map.fitBounds(bounds, { padding: 40, maxZoom: 15, duration: 1800 });
         }
       } catch (err) {
         console.error('Failed to fit bounds to survey route:', err);
@@ -426,20 +427,33 @@ export function CommandCenter() {
     if (!coords || coords.length < 2) coords = RAW_ROUTE_COORDS;
 
     if (coords && coords.length > 1) {
-      try {
-        const bounds = coords.reduce(
-          (b: any, coord: [number, number]) => b.extend(coord),
-          new LngLatBounds(coords[0], coords[0])
-        );
-        map.fitBounds(bounds, { padding: 80, maxZoom: 15, duration: 1500 });
-        hasAutoFittedRef.current = true;
-        setSelectedRouteId(targetRoute?.id || 1);
-        if (primaryJourney) {
-          setSelectedJourney(primaryJourney);
+      const fitCamera = () => {
+        const m = mapRef.current;
+        if (!m) return;
+        const container = m.getContainer();
+        if (!container || container.clientWidth < 50 || container.clientHeight < 50) {
+          window.setTimeout(fitCamera, 150);
+          return;
         }
-      } catch (err) {
-        console.error('Failed to auto-focus primary route on CC:', err);
-      }
+        try {
+          m.resize();
+          const bounds = coords.reduce(
+            (b: any, coord: [number, number]) => b.extend(coord),
+            new LngLatBounds(coords[0], coords[0])
+          );
+          m.fitBounds(bounds, { padding: 40, maxZoom: 15, duration: 1200 });
+          hasAutoFittedRef.current = true;
+          setSelectedRouteId(targetRoute?.id || 1);
+          if (primaryJourney) {
+            setSelectedJourney(primaryJourney);
+          }
+        } catch (err) {
+          console.error('Failed to auto-focus primary route on CC:', err);
+        }
+      };
+
+      const timer = window.setTimeout(fitCamera, 100);
+      return () => window.clearTimeout(timer);
     }
   }, [mapReady, safeRoutes, safeJourneys]);
 
