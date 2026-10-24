@@ -294,6 +294,7 @@ export function LiveMap() {
       const coords = e.detail?.coordinates;
       const map = mapRef.current;
       if (!coords || !map) return;
+      map.triggerRepaint();
 
       if (busMarkerRef.current) {
         busMarkerRef.current.setLngLat(coords);
@@ -594,17 +595,21 @@ export function LiveMap() {
           } catch (e) { console.warn('[FLINT Map] Layer operation skipped:', e); }
         }
       });
+      m.triggerRepaint();
     };
 
     // Schedule: try immediately, and retry with backoff + on idle to handle raster basemap race conditions
     renderLayers();
-    const t1 = window.setTimeout(renderLayers, 300);
-    const t2 = window.setTimeout(renderLayers, 1000);
-    const idleHandler = () => renderLayers();
-    map.once('idle', idleHandler);
+    map.triggerRepaint();
+    const t1 = window.setTimeout(() => { renderLayers(); map.triggerRepaint(); }, 200);
+    const t2 = window.setTimeout(() => { renderLayers(); map.triggerRepaint(); }, 600);
+    const t3 = window.setTimeout(() => { renderLayers(); map.triggerRepaint(); }, 1500);
+    const idleHandler = () => { renderLayers(); map.triggerRepaint(); };
+    map.on('idle', idleHandler);
     return () => {
       window.clearTimeout(t1);
       window.clearTimeout(t2);
+      window.clearTimeout(t3);
       map.off('idle', idleHandler);
     };
   }, [mapReady, mapTheme, safeRoutes, journeys, selectedJourney]);
