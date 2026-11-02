@@ -1,90 +1,217 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Inter", sans-serif;
+  --color-bg-base: var(--bg-base);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-subtle: var(--accent-subtle);
+
+  --color-status-critical: #F0524F;
+  --color-status-high: #F59E0B;
+  --color-status-medium: #EAB308;
+  --color-status-low: #6B7280;
+  --color-status-success: #34D399;
+  --color-status-info: #4C8DFF;
+
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: "JetBrains Mono", monospace;
+}
+
+:root {
+  /* Dark theme (Quiet Enterprise with refined violet-tinted tokens) */
+  --bg-base: #0F1117;
+  --surface: #151821;
+  --surface-raised: #1B1F2A;
+  --border-subtle: #242938;
+  --border-strong: #32394D;
+
+  --text-primary: #EDF0F5;
+  --text-secondary: #9AA1B2;
+  --text-muted: #636A7E;
+
+  --accent: #7C6CF0;
+  --accent-hover: #6C5CE7;
+  --accent-subtle: rgba(124, 108, 240, 0.12);
+
+  --glass-bg: rgba(15, 18, 23, 0.62);
+  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 12px 40px rgba(0, 0, 0, 0.4);
+
+  --card-shadow: none;
+
+  /* KPI tile values (Dark uses solid surface-raised with subtle borders) */
+  --kpi-lavender: #1B1F2A;
+  --kpi-sky: #1B1F2A;
+  --kpi-indigo: #1B1F2A;
+  --kpi-mint: #1B1F2A;
+  --kpi-text: #EDF0F5;
+  --kpi-border: #242938;
+
+  color-scheme: dark;
+}
+
+html.light,
+:root[data-theme="light"] {
+  /* Aurora Light theme */
+  --bg-base: #F4F5FB;
+  --surface: #FFFFFF;
+  --surface-raised: #F7F8FD;
+  --border-subtle: #E4E7F0;
+  --border-strong: #D3D7E4;
+
+  --text-primary: #1A1D26;
+  --text-secondary: #525866;
+  --text-muted: #8A90A0;
+
+  --accent: #6C5CE7;
+  --accent-hover: #5B4CC4;
+  --accent-subtle: rgba(108, 92, 231, 0.08);
+
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.70);
+  --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 0 0 1px rgba(108, 92, 231, 0.10), 0 10px 36px rgba(60, 64, 120, 0.14);
+
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 6px 16px rgba(0, 0, 0, 0.03);
+
+  /* Aurora KPI Gradients */
+  --kpi-lavender: linear-gradient(135deg, #E6DEFF 0%, #D4C8FA 100%);
+  --kpi-sky: linear-gradient(135deg, #D3F0FB 0%, #B9E3F8 100%);
+  --kpi-indigo: linear-gradient(135deg, #DAD9FF 0%, #C2C3F7 100%);
+  --kpi-mint: linear-gradient(135deg, #D5F5EE 0%, #BDEBE1 100%);
+  --kpi-text: #1A1D26;
+  --kpi-border: transparent;
+
+  color-scheme: light;
 }
 
 body {
   margin: 0;
-  background-color: #0A0C10;
-  color: #E6EDF3;
-  font-family: 'Inter', sans-serif;
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Pulse ring animation for active indicators */
-@keyframes pulse-ring {
-  0% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(162, 201, 255, 0.5); }
-  70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(162, 201, 255, 0); }
-  100% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(162, 201, 255, 0); }
+/* Aurora Light background gradient */
+html.light body {
+  background: linear-gradient(135deg, #E9E7FB 0%, #E3ECFC 45%, #DDF4F1 100%);
+  background-attachment: fixed;
+  min-height: 100vh;
 }
 
-.animate-pulse-ring {
-  animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+/* Fixed decorative radial orbs for Aurora Light */
+.aurora-bg-decor {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+  display: none;
 }
 
-/* Error pulse for critical markers */
-@keyframes pulse-error {
-  0% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(255, 180, 171, 0.5); }
-  70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(255, 180, 171, 0); }
-  100% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(255, 180, 171, 0); }
+html.light .aurora-bg-decor {
+  display: block;
 }
 
-.animate-pulse-error {
-  animation: pulse-error 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+.aurora-orb-violet {
+  position: absolute;
+  top: -12%;
+  left: -8%;
+  width: 55vw;
+  height: 55vw;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.10) 0%, transparent 68%);
+  filter: blur(60px);
 }
 
-/* Glass panel effect for map overlays */
+.aurora-orb-sky {
+  position: absolute;
+  top: 30%;
+  right: -10%;
+  width: 50vw;
+  height: 50vw;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.10) 0%, transparent 68%);
+  filter: blur(60px);
+}
+
+.aurora-orb-mint {
+  position: absolute;
+  bottom: -15%;
+  left: 20%;
+  width: 45vw;
+  height: 45vw;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(52, 211, 153, 0.08) 0%, transparent 68%);
+  filter: blur(60px);
+}
+
+/* Tabular nums for all data readings */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Controlled glassmorphism (strictly for map-floating overlays) */
 .glass-panel {
-  background-color: rgba(16, 20, 25, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(65, 71, 82, 0.5);
+  background: var(--glass-bg);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  border-radius: 14px;
 }
 
-/* Red glow for critical elements */
-.glow-red {
-  box-shadow: 0 0 8px 0 rgba(255, 180, 171, 0.3);
+/* Subtle single live-bus pulse only */
+@keyframes bus-pulse {
+  0% { transform: scale(0.95); opacity: 0.9; }
+  50% { transform: scale(1.15); opacity: 0.4; }
+  100% { transform: scale(0.95); opacity: 0.9; }
 }
 
-/* Route line drawing animation */
-@keyframes drawRoute {
-  to { stroke-dashoffset: 0; }
+.animate-bus-pulse {
+  animation: bus-pulse 2.4s ease-in-out infinite;
 }
 
-.map-route-active {
-  stroke-dasharray: 1000;
-  stroke-dashoffset: 1000;
-  animation: drawRoute 3s ease-out forwards;
-}
-
-/* MapLibre overrides for dark theme */
+/* MapLibre custom overrides aligned to quiet enterprise & aurora theme */
 .maplibregl-popup-content {
-  background: #101419 !important;
-  border: 1px solid #414752 !important;
-  color: #e0e2ea !important;
-  border-radius: 8px !important;
+  background: var(--surface) !important;
+  border: 1px solid var(--border-subtle) !important;
+  color: var(--text-primary) !important;
+  border-radius: 10px !important;
   padding: 0 !important;
-  box-shadow: 0 12px 24px -12px rgba(0, 0, 0, 0.5) !important;
+  box-shadow: 0 12px 28px -8px rgba(0, 0, 0, 0.25) !important;
 }
 
 .maplibregl-popup-tip {
-  border-top-color: #414752 !important;
+  border-top-color: var(--surface) !important;
 }
 
 .maplibregl-ctrl-group {
-  background: #101419 !important;
-  border: 1px solid #414752 !important;
+  background: var(--surface) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12) !important;
 }
 
 .maplibregl-ctrl-group button {
-  border-bottom: 1px solid #414752 !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
 }
 
 .maplibregl-ctrl-group button:hover {
-  background-color: #272a30 !important;
+  background-color: var(--surface-raised) !important;
 }
 
-.maplibregl-ctrl-group button span {
+html.dark .maplibregl-ctrl-group button span {
   filter: invert(1) !important;
 }

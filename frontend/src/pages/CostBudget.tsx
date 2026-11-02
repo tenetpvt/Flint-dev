@@ -1,19 +1,13 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  CircleDollarSign,
   Download,
   Sliders,
-  Layers,
-  MapPin,
-  AlertTriangle,
-  Package,
-  Wrench,
   Search,
-  ExternalLink,
-  CheckCircle2,
+  Check,
   Copy,
   ChevronDown,
+  FileText,
 } from 'lucide-react';
 
 import {
@@ -41,15 +35,21 @@ import {
   type UnitRatesConfig,
 } from '../services/costEstimation';
 import { fetchRoutes } from '../services/routes';
-import { MAP_STYLE, RAIPUR_CENTER } from '../utils/mapStyle';
-import { getEvidenceUrl } from '../utils/evidence';
+import { MAP_STYLE, DARK_MAP_STYLE, RAIPUR_CENTER } from '../utils/mapStyle';
 import { UnitRatesModal } from '../components/cost/UnitRatesModal';
 import { WorkOrderModal, type WorkOrderData } from '../components/ui/WorkOrderModal';
 import { LoadingState } from '../components/ui/LoadingState';
 import { ErrorState } from '../components/ui/ErrorState';
+import { useTheme } from '../context/ThemeContext';
+import { Button } from '../components/ui/Button';
+import { Card } from '../components/ui/Card';
+import { StatusDot } from '../components/ui/StatusDot';
+import { SegmentedControl } from '../components/ui/SegmentedControl';
+import { EmptyState } from '../components/ui/EmptyState';
 
 export function CostBudget() {
   const queryClient = useQueryClient();
+  const { theme } = useTheme();
   const [selectedRouteId, setSelectedRouteId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [severityFilter, setSeverityFilter] = useState<string>('ALL');
@@ -67,7 +67,7 @@ export function CostBudget() {
     queryFn: fetchRoutes,
   });
 
-  // 2. Fetch Cost Summary for Selected Route
+  // 2. Fetch Cost Summary
   const {
     data: summary,
     isLoading: summaryLoading,
@@ -77,7 +77,7 @@ export function CostBudget() {
     queryFn: () => fetchCostSummary(selectedRouteId),
   });
 
-  // 3. Fetch BOQ Items for Selected Route
+  // 3. Fetch BOQ Items
   const {
     data: boqItems,
     isLoading: boqLoading,
@@ -87,13 +87,12 @@ export function CostBudget() {
     queryFn: () => fetchBOQ(selectedRouteId),
   });
 
-  // 4. Fetch Active Unit Rates
+  // 4. Fetch Unit Rates
   const { data: rates } = useQuery({
     queryKey: ['cost-rates'],
     queryFn: fetchUnitRates,
   });
 
-  // Mutations for Rates
   const updateRatesMutation = useMutation({
     mutationFn: (newRates: UnitRatesConfig) => updateUnitRates(newRates),
     onSuccess: () => {
@@ -103,105 +102,108 @@ export function CostBudget() {
     },
   });
 
-  const resetRatesMutation = useMutation({
-    mutationFn: () => resetUnitRates(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['cost-summary'] });
-      queryClient.invalidateQueries({ queryKey: ['cost-boq'] });
-      queryClient.invalidateQueries({ queryKey: ['cost-rates'] });
-    },
-  });
-
-  // Filtered BOQ items based on search and severity chips
-  const filteredBOQ = useMemo(() => {
-    if (!boqItems) return [];
-    return boqItems.filter((item) => {
-      const matchesSearch =
-        item.location_label.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.route_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.repair_method.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        `DEF-${item.id}`.toLowerCase().includes(searchTerm.toLowerCase());
-
-      const matchesSeverity =
-        severityFilter === 'ALL' || item.severity.toUpperCase() === severityFilter.toUpperCase();
-
-      return matchesSearch && matchesSeverity;
-    });
-  }, [boqItems, searchTerm, severityFilter]);
-
-  // Selected route GeoJSON polyline for mini-map
+  // Selected route GeoJSON geometry
   const selectedRouteGeoJSON = useMemo(() => {
-    if (!routes || !selectedRouteId) return null;
+    if (!selectedRouteId || !routes) return null;
     const r = routes.find((x) => x.id === selectedRouteId);
-    if (!r || !r.geojson_path) return null;
+    if (!r?.geojson_path) return null;
     try {
       const coords = JSON.parse(r.geojson_path);
       return {
         type: 'Feature' as const,
-        geometry: {
-          type: 'LineString' as const,
-          coordinates: coords,
-        },
+        geometry: { type: 'LineString' as const, coordinates: coords },
+        properties: {},
       };
     } catch {
       return null;
     }
-  }, [routes, selectedRouteId]);
+  }, [selectedRouteId, routes]);
 
-  // Map Initialization & Updates
+  // Filtered BOQ list
+  const filteredBOQ = useMemo(() => {
+    if (!boqItems) return [];
+    return boqItems.filter((item) => {
+      const matchSearch =
+        searchTerm === '' ||
+        item.id.toString().includes(searchTerm) ||
+        item.location_label.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.type.toLowerCase().includes(searchTerm.toLowerCase());
+
+      const matchSev =
+        severityFilter === 'ALL' || item.severity.toUpperCase() === severityFilter;
+
+      return matchSearch && matchSev;
+    });
+  }, [boqItems, searchTerm, severityFilter]);
+
+  // MapLibre init
   useEffect(() => {
-    if (!mapContainerRef.current) return;
+    if (!mapContainerRef.current || mapRef.current) return;
 
-    if (!mapRef.current) {
-      const map = new MapLibreMap({
-        container: mapContainerRef.current,
-        style: MAP_STYLE,
-        center: RAIPUR_CENTER,
-        zoom: 12,
-        attributionControl: false,
+    const map = new MapLibreMap({
+      container: mapContainerRef.current,
+      style: theme === 'light' ? MAP_STYLE : DARK_MAP_STYLE,
+      center: RAIPUR_CENTER,
+      zoom: 12,
+      attributionControl: false,
+    });
+
+    map.on('load', () => {
+      map.addSource('route-corridor', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
       });
 
-      map.on('load', () => {
-        // Add route corridor line layer
-        map.addSource('corridor-route', {
-          type: 'geojson',
-          data: {
-            type: 'FeatureCollection',
-            features: [],
-          },
-        });
-
-        map.addLayer({
-          id: 'corridor-route-line',
-          type: 'line',
-          source: 'corridor-route',
-          paint: {
-            'line-color': '#38bdf8',
-            'line-width': 4,
-            'line-opacity': 0.85,
-          },
-        });
+      map.addLayer({
+        id: 'corridor-casing',
+        type: 'line',
+        source: 'route-corridor',
+        paint: {
+          'line-color': '#000000',
+          'line-width': 6,
+          'line-opacity': 0.35,
+        },
       });
 
-      mapRef.current = map;
-    }
+      map.addLayer({
+        id: 'corridor-core',
+        type: 'line',
+        source: 'route-corridor',
+        paint: {
+          'line-color': '#7C6CF0',
+          'line-width': 3.5,
+          'line-opacity': 0.85,
+        },
+      });
+    });
 
+    mapRef.current = map;
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
+    };
+  }, [theme]);
+
+  // Sync corridor and defect markers
+  useEffect(() => {
     const map = mapRef.current;
+    if (!map) return;
 
-    // Update Route Source
     const updateSource = () => {
-      const src = map.getSource('corridor-route') as any;
+      const src = map.getSource('route-corridor') as any;
       if (src) {
         if (selectedRouteGeoJSON) {
-          src.setData({
-            type: 'FeatureCollection',
-            features: [selectedRouteGeoJSON],
-          });
+          src.setData(selectedRouteGeoJSON);
+          const bounds = new LngLatBounds();
+          (selectedRouteGeoJSON.geometry.coordinates as [number, number][]).forEach((c) =>
+            bounds.extend(c)
+          );
+          map.fitBounds(bounds, { padding: 40, maxZoom: 14 });
         } else {
-          src.setData({
-            type: 'FeatureCollection',
-            features: [],
-          });
+          src.setData({ type: 'FeatureCollection', features: [] });
         }
       }
     };
@@ -212,11 +214,9 @@ export function CostBudget() {
       map.once('load', updateSource);
     }
 
-    // Clear old markers
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
 
-    // Add defect markers color-coded by cost/severity tier
     if (boqItems && boqItems.length > 0) {
       const bounds = new LngLatBounds();
 
@@ -226,30 +226,30 @@ export function CostBudget() {
 
         const color =
           defect.severity === 'CRITICAL'
-            ? '#ef4444'
+            ? '#F0524F'
             : defect.severity === 'HIGH'
-            ? '#f97316'
+            ? '#F59E0B'
             : defect.severity === 'MEDIUM'
-            ? '#eab308'
-            : '#22c55e';
+            ? '#EAB308'
+            : '#6B7280';
 
         markerEl.innerHTML = `
-          <div style="background-color: ${color}; box-shadow: 0 0 12px ${color}80;" class="w-4 h-4 rounded-full border-2 border-white transition-transform transform group-hover:scale-125 flex items-center justify-center">
-            <div class="w-1.5 h-1.5 rounded-full bg-white"></div>
+          <div style="background-color: ${color};" class="w-3.5 h-3.5 rounded-full border-2 border-white shadow-sm flex items-center justify-center">
+            <div class="w-1 h-1 rounded-full bg-white"></div>
           </div>
         `;
 
         const popup = new Popup({ offset: 12, closeButton: false }).setHTML(`
-          <div style="background: #0b0e14; border: 1px solid #414752; border-radius: 8px; padding: 10px; color: #e0e2ea; font-family: Inter, sans-serif; width: 220px; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-              <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: bold; color: ${color};">DEF-${String(defect.id).padStart(4, '0')}</span>
-              <span style="font-size: 10px; font-weight: bold; background: ${color}25; color: ${color}; padding: 2px 6px; border-radius: 4px;">${defect.severity}</span>
+          <div style="background: var(--surface, #151821); border: 1px solid var(--border-subtle, #242938); border-radius: 8px; padding: 10px; color: var(--text-primary, #EDF0F5); font-family: Inter, sans-serif; width: 200px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+              <span style="font-family: monospace; font-size: 11px; font-weight: 600; color: ${color};">DEF-${String(defect.id).padStart(4, '0')}</span>
+              <span style="font-size: 10px; font-weight: 500;">${defect.severity}</span>
             </div>
-            <div style="font-size: 12px; font-weight: 600; color: #fff; margin-bottom: 2px;">${defect.location_label}</div>
-            <div style="font-size: 11px; color: #94a3b8; margin-bottom: 6px;">${defect.repair_method} · ${defect.estimated_area_sq_m.toFixed(2)} m²</div>
-            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #272a30; padding-top: 6px; margin-top: 4px;">
-              <span style="font-size: 10px; color: #8b949e;">EST. REPAIR:</span>
-              <span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: bold; color: #38bdf8;">₹${defect.estimated_cost.toLocaleString('en-IN')}</span>
+            <div style="font-size: 11px; font-weight: 500; margin-bottom: 2px;">${defect.location_label}</div>
+            <div style="font-size: 10px; color: var(--text-muted, #8A90A0); margin-bottom: 6px;">${defect.repair_method} · ${defect.estimated_area_sq_m.toFixed(2)} m²</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-subtle, #242938); padding-top: 4px;">
+              <span style="font-size: 10px; color: var(--text-muted, #8A90A0);">Est. cost:</span>
+              <span style="font-family: monospace; font-size: 12px; font-weight: 600;">₹${defect.estimated_cost.toLocaleString('en-IN')}</span>
             </div>
           </div>
         `);
@@ -263,7 +263,7 @@ export function CostBudget() {
         bounds.extend([defect.lon, defect.lat]);
       });
 
-      if (!bounds.isEmpty()) {
+      if (!selectedRouteGeoJSON && !bounds.isEmpty()) {
         map.fitBounds(bounds, { padding: 45, maxZoom: 14 });
       }
     }
@@ -279,7 +279,9 @@ export function CostBudget() {
     setActiveWorkOrderData({
       ticketId: `DEF-${String(item.id).padStart(4, '0')}`,
       defectType: item.type,
-      severity: (['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].includes(item.severity) ? item.severity : 'MEDIUM') as any,
+      severity: (['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].includes(item.severity)
+        ? item.severity
+        : 'MEDIUM') as any,
       lat: item.lat,
       lon: item.lon,
       streetName: item.location_label,
@@ -293,20 +295,12 @@ export function CostBudget() {
   };
 
   if ((summaryLoading || boqLoading) && !summary) {
-    return <LoadingState message="Calculating Municipal Repair Quantities & Budget..." />;
+    return <LoadingState message="Calculating repair quantities and budget..." />;
   }
 
   if ((summaryError || boqError) && !summary) {
-    return <ErrorState message="Could not load route cost estimation data." />;
+    return <ErrorState message="Could not load cost estimation data." />;
   }
-
-
-  const activeRates = rates || {
-    cold_mix_rate_sq_m: 1200,
-    hot_mix_rate_sq_m: 2800,
-    full_depth_rate_sq_m: 6500,
-    mobilization_overhead: 1500,
-  };
 
   const totalCost = summary?.total_estimated_cost || 0;
   const totalDefects = summary?.total_defects || 0;
@@ -316,207 +310,182 @@ export function CostBudget() {
   const backlogPercent = totalCost > 0 ? Math.round((criticalBacklog / totalCost) * 100) : 0;
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#0A0C10] overflow-y-auto">
-      {/* Top Header & Route Control Bar */}
-      <div className="bg-[#181c21] border-b border-[#414752] px-6 py-3.5 flex flex-wrap gap-4 justify-between items-center shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#38bdf8]/15 border border-[#38bdf8]/30 flex items-center justify-center text-[#38bdf8]">
-            <CircleDollarSign className="w-5 h-5" />
-          </div>
-          <div>
-            <h1 className="font-['Inter'] text-[17px] font-bold text-[#e0e2ea] tracking-tight flex items-center gap-2">
-              COST & BUDGET ESTIMATION
-              <span className="font-['JetBrains_Mono'] text-[10px] font-semibold px-2 py-0.5 rounded bg-[#38bdf8]/15 text-[#38bdf8] border border-[#38bdf8]/30 uppercase">
-                CIVIL REPAIR ENGINE
-              </span>
-            </h1>
-            <p className="font-['JetBrains_Mono'] text-[11px] text-[#94a3b8] mt-0.5">
-              PWD / MUNICIPAL SCHEDULE OF RATES · CORRIDOR BILL OF QUANTITIES (BOQ)
-            </p>
-          </div>
-        </div>
-
-        {/* Filter Controls & Action Buttons */}
-        <div className="flex items-center gap-3 flex-wrap">
-          {/* Route Dropdown Selector */}
-          <div className="relative min-w-[240px]">
+    <div className="flex-1 flex flex-col h-full bg-[var(--bg-base)] text-[var(--text-primary)] overflow-y-auto">
+      {/* Top Header / Route Toolbar */}
+      <div className="bg-[var(--surface)] border-b border-[var(--border-subtle)] px-6 py-3 flex flex-wrap gap-3 justify-between items-center shrink-0">
+        <div className="flex items-center gap-2.5">
+          <span className="text-xs font-semibold text-[var(--text-primary)]">
+            Corridor filter:
+          </span>
+          <div className="relative min-w-[260px]">
             <select
               value={selectedRouteId ?? ''}
               onChange={(e) => {
                 const val = e.target.value;
                 setSelectedRouteId(val === '' ? null : Number(val));
               }}
-              className="w-full appearance-none bg-[#101419] border border-[#414752] rounded-xl px-3.5 py-2 pr-9 text-xs font-medium text-[#e0e2ea] focus:outline-none focus:border-[#38bdf8] cursor-pointer"
+              className="w-full appearance-none bg-[var(--surface-raised)] border border-[var(--border-subtle)] rounded-lg px-3 py-1.5 pr-8 text-xs font-medium text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] cursor-pointer"
             >
-              <option value="">All Corridors (Raipur Transit Network)</option>
+              <option value="">All corridors (Raipur network)</option>
               {routes?.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.name} · {r.description} ({r.distance_km} km)
                 </option>
               ))}
             </select>
-            <ChevronDown className="w-4 h-4 text-[#8b949e] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
+        </div>
 
-          {/* Export Work Order CSV Button */}
-          <button
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<Download className="w-3.5 h-3.5" />}
             onClick={() => downloadWorkOrderCSV(selectedRouteId, boqItems)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-[#1a202c] border border-[#414752] text-[#e0e2ea] hover:bg-[#272a30] hover:text-[#38bdf8] hover:border-[#38bdf8]/50 transition-colors cursor-pointer shadow-sm"
-            title="Download municipal compliant work-order CSV"
           >
-            <Download className="w-4 h-4 text-[#38bdf8]" />
-            <span>Export Work Order (CSV)</span>
-          </button>
+            Export work order (CSV)
+          </Button>
 
-          {/* Configure Unit Rates Button */}
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<Sliders className="w-3.5 h-3.5" />}
             onClick={() => setIsRatesModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-[#38bdf8]/15 border border-[#38bdf8]/40 text-[#38bdf8] hover:bg-[#38bdf8]/25 transition-colors cursor-pointer shadow-sm"
-            title="Tune CPWD baseline material and overhead unit rates"
           >
-            <Sliders className="w-4 h-4" />
-            <span>Configure Unit Rates</span>
-          </button>
+            Configure unit rates
+          </Button>
         </div>
       </div>
 
       <div className="p-6 max-w-7xl mx-auto w-full space-y-6 pb-20">
-        {/* Top 4 Reactive KPI Cards */}
+        {/* Top 4 Aurora KPI Tiles */}
         <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Card 1: Total Estimated Repair Cost */}
-          <div className="bg-[#12161f] border border-[#414752]/70 rounded-2xl p-4.5 shadow-lg relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-[#38bdf8]/5 rounded-bl-full pointer-events-none group-hover:scale-110 transition-transform"></div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="font-['Inter'] text-[11px] font-bold text-[#94a3b8] uppercase tracking-wider">
-                Total Route Repair Budget
-              </span>
-              <div className="w-7 h-7 rounded-lg bg-[#38bdf8]/15 flex items-center justify-center text-[#38bdf8]">
-                <CircleDollarSign className="w-4 h-4" />
-              </div>
+          {/* Tile 1: Total Route Repair Budget */}
+          <div
+            className="p-4 rounded-xl border transition-all"
+            style={{
+              background: 'var(--kpi-lavender)',
+              borderColor: 'var(--kpi-border)',
+              boxShadow: 'var(--card-shadow)',
+            }}
+          >
+            <div className="text-[11px] font-medium text-[var(--text-muted)]">
+              Total repair budget
             </div>
-            <div className="font-['JetBrains_Mono'] text-2xl font-bold text-[#e0e2ea] tracking-tight">
+            <div
+              className="text-2xl font-semibold tabular-nums mt-1 font-mono"
+              style={{ color: 'var(--kpi-text)' }}
+            >
               ₹{totalCost.toLocaleString('en-IN')}
             </div>
-            <div className="mt-2 flex items-center gap-2 text-[11px] text-[#38bdf8]">
-              <span className="font-medium">
-                {summary?.route_name ? summary.route_name.split(' - ')[0] : 'Raipur Network'}
-              </span>
-              <span className="text-[#64748b]">·</span>
-              <span className="text-[#94a3b8]">CPWD Rate Model</span>
+            <div className="text-[11px] text-[var(--text-muted)] mt-1">
+              CPWD Schedule of Rates (SOR) baseline
             </div>
           </div>
 
-          {/* Card 2: Total Defects on Route */}
-          <div className="bg-[#12161f] border border-[#414752]/70 rounded-2xl p-4.5 shadow-lg relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-[#a855f7]/5 rounded-bl-full pointer-events-none group-hover:scale-110 transition-transform"></div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="font-['Inter'] text-[11px] font-bold text-[#94a3b8] uppercase tracking-wider">
-                Total Identified Defects
-              </span>
-              <div className="w-7 h-7 rounded-lg bg-[#a855f7]/15 flex items-center justify-center text-[#a855f7]">
-                <Layers className="w-4 h-4" />
-              </div>
+          {/* Tile 2: Total Defects */}
+          <div
+            className="p-4 rounded-xl border transition-all"
+            style={{
+              background: 'var(--kpi-sky)',
+              borderColor: 'var(--kpi-border)',
+              boxShadow: 'var(--card-shadow)',
+            }}
+          >
+            <div className="text-[11px] font-medium text-[var(--text-muted)]">
+              Identified hazards
             </div>
-            <div className="font-['JetBrains_Mono'] text-2xl font-bold text-[#e0e2ea] tracking-tight">
+            <div
+              className="text-2xl font-semibold tabular-nums mt-1"
+              style={{ color: 'var(--kpi-text)' }}
+            >
               {totalDefects}
-              <span className="text-xs text-[#94a3b8] font-normal ml-2">Hazards</span>
             </div>
-            <div className="mt-2 flex items-center gap-1.5 text-[11px] text-[#94a3b8]">
-              <span className="w-1.5 h-1.5 rounded-full bg-red-400"></span>
-              <span>Confirmed via Edge YOLOv8 & ByteTrack</span>
+            <div className="text-[11px] text-[var(--text-muted)] mt-1">
+              Confirmed via dual-head perception
             </div>
           </div>
 
-          {/* Card 3: High-Priority / Critical Backlog */}
-          <div className="bg-[#12161f] border border-[#414752]/70 rounded-2xl p-4.5 shadow-lg relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-red-500/5 rounded-bl-full pointer-events-none group-hover:scale-110 transition-transform"></div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="font-['Inter'] text-[11px] font-bold text-[#94a3b8] uppercase tracking-wider">
-                Critical Repair Backlog
-              </span>
-              <div className="w-7 h-7 rounded-lg bg-red-500/15 flex items-center justify-center text-red-400">
-                <AlertTriangle className="w-4 h-4" />
-              </div>
+          {/* Tile 3: Critical Backlog */}
+          <div
+            className="p-4 rounded-xl border transition-all"
+            style={{
+              background: 'var(--kpi-indigo)',
+              borderColor: 'var(--kpi-border)',
+              boxShadow: 'var(--card-shadow)',
+            }}
+          >
+            <div className="text-[11px] font-medium text-[var(--text-muted)]">
+              Critical repair backlog
             </div>
-            <div className="font-['JetBrains_Mono'] text-2xl font-bold text-red-400 tracking-tight">
+            <div
+              className={`text-2xl font-semibold tabular-nums mt-1 font-mono ${
+                criticalBacklog > 0 ? 'text-[#F0524F]' : ''
+              }`}
+              style={{ color: criticalBacklog > 0 ? '#F0524F' : 'var(--kpi-text)' }}
+            >
               ₹{criticalBacklog.toLocaleString('en-IN')}
             </div>
-            <div className="mt-2 flex items-center justify-between text-[11px]">
-              <span className="text-[#94a3b8]">Emergency Dispatches:</span>
-              <span className="font-['JetBrains_Mono'] font-bold text-red-400">
-                {backlogPercent}% of Budget
-              </span>
+            <div className="text-[11px] text-[var(--text-muted)] mt-1">
+              {backlogPercent}% of total estimated budget
             </div>
           </div>
 
-          {/* Card 4: Estimated Material Required */}
-          <div className="bg-[#12161f] border border-[#414752]/70 rounded-2xl p-4.5 shadow-lg relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-bl-full pointer-events-none group-hover:scale-110 transition-transform"></div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="font-['Inter'] text-[11px] font-bold text-[#94a3b8] uppercase tracking-wider">
-                Estimated Material Reqd.
-              </span>
-              <div className="w-7 h-7 rounded-lg bg-emerald-500/15 flex items-center justify-center text-emerald-400">
-                <Package className="w-4 h-4" />
-              </div>
+          {/* Tile 4: Estimated Material */}
+          <div
+            className="p-4 rounded-xl border transition-all"
+            style={{
+              background: 'var(--kpi-mint)',
+              borderColor: 'var(--kpi-border)',
+              boxShadow: 'var(--card-shadow)',
+            }}
+          >
+            <div className="text-[11px] font-medium text-[var(--text-muted)]">
+              Material requirement
             </div>
-            <div className="font-['JetBrains_Mono'] text-2xl font-bold text-[#e0e2ea] tracking-tight">
-              {asphaltTons} <span className="text-sm text-[#94a3b8] font-normal">MT</span>
-              <span className="text-sm text-[#64748b] font-normal mx-1.5">/</span>
-              {coldBags} <span className="text-sm text-[#94a3b8] font-normal">Bags</span>
+            <div
+              className="text-2xl font-semibold tabular-nums mt-1 font-mono"
+              style={{ color: 'var(--kpi-text)' }}
+            >
+              {asphaltTons} MT <span className="text-xs font-normal text-[var(--text-muted)]">/ {coldBags} bags</span>
             </div>
-            <div className="mt-2 text-[11px] text-[#94a3b8] truncate">
-              Hot-Mix Asphalt (2.35 t/m³) + Cold Patch
+            <div className="text-[11px] text-[var(--text-muted)] mt-1">
+              Hot-mix asphalt & cold patch mix
             </div>
           </div>
         </section>
 
-        {/* Corridor Analysis & Visual Breakdown (2-Column Grid) */}
+        {/* Spatial Distribution Map & Visual Breakdown (2-Column Grid) */}
         <section className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left Column: Interactive Corridor Mini-Map (7 cols) */}
-          <div className="lg:col-span-7 bg-[#12161f] border border-[#414752]/70 rounded-2xl p-4 shadow-xl flex flex-col">
-            <div className="flex items-center justify-between mb-3 px-1">
-              <div className="flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-[#38bdf8]" />
-                <h3 className="font-['Inter'] text-xs font-bold text-[#e0e2ea] tracking-tight uppercase">
-                  Corridor Defect Spatial Distribution
-                </h3>
-              </div>
-              <div className="flex items-center gap-2 text-[10px] font-['JetBrains_Mono'] text-[#94a3b8]">
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-red-500"></span> Critical
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-orange-500"></span> High
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-yellow-400"></span> Medium
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span> Low
-                </span>
+          {/* Left Column: Corridor Mini-Map */}
+          <Card className="lg:col-span-7 p-4 flex flex-col">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-semibold text-[var(--text-primary)]">
+                Corridor defect spatial distribution
+              </h3>
+              <div className="flex items-center gap-2 text-[10px] text-[var(--text-muted)]">
+                <StatusDot status="critical" label="Critical" />
+                <StatusDot status="high" label="High" />
+                <StatusDot status="medium" label="Medium" />
+                <StatusDot status="low" label="Low" />
               </div>
             </div>
 
-            {/* Mini Map Canvas */}
-            <div className="relative w-full h-[320px] rounded-xl overflow-hidden border border-[#30363d] bg-[#0b0e14]">
+            <div className="relative w-full h-[320px] rounded-lg overflow-hidden border border-[var(--border-subtle)] bg-[var(--surface-raised)]">
               <div ref={mapContainerRef} className="w-full h-full" />
-              <div className="absolute bottom-2 left-2 bg-[#0b0e14]/90 backdrop-blur-md px-2.5 py-1 rounded-lg border border-[#414752] text-[10px] font-['JetBrains_Mono'] text-[#94a3b8]">
-                Interactive markers: Click for crop & repair cost
-              </div>
             </div>
-          </div>
+          </Card>
 
-          {/* Right Column: Visual Breakdown Charts (5 cols) */}
+          {/* Right Column: Breakdown Charts */}
           <div className="lg:col-span-5 space-y-4">
-            {/* Chart 1: Cost by Severity */}
-            <div className="bg-[#12161f] border border-[#414752]/70 rounded-2xl p-4 shadow-xl">
+            {/* Cost by Severity */}
+            <Card className="p-4">
               <div className="flex items-center justify-between mb-2">
-                <h3 className="font-['Inter'] text-xs font-bold text-[#e0e2ea] tracking-tight uppercase flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-[#f87171]"></span>
-                  Cost by Severity Tier
+                <h3 className="text-xs font-semibold text-[var(--text-primary)]">
+                  Cost by severity tier
                 </h3>
-                <span className="font-['JetBrains_Mono'] text-[10px] text-[#64748b]">Triage Breakdown</span>
+                <span className="text-[10px] font-mono text-[var(--text-muted)]">Triage share</span>
               </div>
               <div className="h-[140px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -540,9 +509,9 @@ export function CostBudget() {
                         if (active && payload && payload.length) {
                           const data = payload[0].payload;
                           return (
-                            <div className="bg-[#0b0e14] border border-[#414752] p-2 rounded-lg text-xs font-['Inter'] shadow-xl">
-                              <p className="font-bold text-[#e0e2ea]">{data.label}</p>
-                              <p className="text-[#38bdf8] font-['JetBrains_Mono']">
+                            <div className="bg-[var(--surface)] border border-[var(--border-subtle)] p-2 rounded-lg text-xs shadow-lg">
+                              <p className="font-semibold text-[var(--text-primary)]">{data.label}</p>
+                              <p className="font-mono text-[var(--accent)]">
                                 ₹{data.cost.toLocaleString('en-IN')} ({data.count} items)
                               </p>
                             </div>
@@ -554,30 +523,29 @@ export function CostBudget() {
                   </PieChart>
                 </ResponsiveContainer>
               </div>
-              {/* Legend List */}
-              <div className="grid grid-cols-2 gap-2 mt-1 pt-2 border-t border-[#30363d]/60">
+
+              <div className="grid grid-cols-2 gap-2 mt-1 pt-2 border-t border-[var(--border-subtle)]">
                 {summary?.cost_by_severity?.map((item) => (
                   <div key={item.severity} className="flex items-center justify-between text-[11px]">
                     <div className="flex items-center gap-1.5 truncate">
                       <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                      <span className="text-[#cbd5e1] truncate">{item.severity}</span>
+                      <span className="text-[var(--text-secondary)] truncate">{item.severity}</span>
                     </div>
-                    <span className="font-['JetBrains_Mono'] text-[#94a3b8] ml-1 shrink-0">
+                    <span className="font-mono text-[var(--text-muted)] ml-1 shrink-0">
                       ₹{Math.round(item.cost / 1000)}k
                     </span>
                   </div>
                 ))}
               </div>
-            </div>
+            </Card>
 
-            {/* Chart 2: Cost by Repair Method */}
-            <div className="bg-[#12161f] border border-[#414752]/70 rounded-2xl p-4 shadow-xl">
+            {/* Cost by Repair Technique */}
+            <Card className="p-4">
               <div className="flex items-center justify-between mb-2">
-                <h3 className="font-['Inter'] text-xs font-bold text-[#e0e2ea] tracking-tight uppercase flex items-center gap-1.5">
-                  <Wrench className="w-3.5 h-3.5 text-[#38bdf8]" />
-                  Cost by Repair Technique
+                <h3 className="text-xs font-semibold text-[var(--text-primary)]">
+                  Cost by repair technique
                 </h3>
-                <span className="font-['JetBrains_Mono'] text-[10px] text-[#64748b]">Material Method</span>
+                <span className="text-[10px] font-mono text-[var(--text-muted)]">Material method</span>
               </div>
               <div className="h-[125px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -593,16 +561,16 @@ export function CostBudget() {
                       axisLine={false}
                       tickLine={false}
                       width={100}
-                      tick={{ fill: '#94a3b8', fontSize: 10 }}
+                      tick={{ fill: 'var(--text-secondary)', fontSize: 10 }}
                     />
                     <RechartsTooltip
                       content={({ active, payload }) => {
                         if (active && payload && payload.length) {
                           const data = payload[0].payload;
                           return (
-                            <div className="bg-[#0b0e14] border border-[#414752] p-2 rounded-lg text-xs font-['Inter'] shadow-xl">
-                              <p className="font-bold text-[#e0e2ea]">{data.method}</p>
-                              <p className="text-[#38bdf8] font-['JetBrains_Mono']">
+                            <div className="bg-[var(--surface)] border border-[var(--border-subtle)] p-2 rounded-lg text-xs shadow-lg">
+                              <p className="font-semibold text-[var(--text-primary)]">{data.method}</p>
+                              <p className="font-mono text-[var(--accent)]">
                                 ₹{data.cost.toLocaleString('en-IN')} ({data.count} repairs)
                               </p>
                             </div>
@@ -619,180 +587,153 @@ export function CostBudget() {
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-            </div>
+            </Card>
           </div>
         </section>
 
         {/* Itemized Bill of Quantities (BOQ) Table */}
-        <section className="bg-[#12161f] border border-[#414752]/70 rounded-2xl shadow-xl overflow-hidden flex flex-col">
+        <Card className="overflow-hidden p-0">
           {/* Table Toolbar */}
-          <div className="p-4 border-b border-[#414752]/50 flex flex-wrap gap-3 items-center justify-between bg-[#161a23]">
+          <div className="p-3 border-b border-[var(--border-subtle)] flex flex-wrap gap-3 items-center justify-between bg-[var(--surface-raised)]/40">
             <div className="flex items-center gap-2">
-              <h3 className="font-['Inter'] text-sm font-bold text-[#e0e2ea] uppercase tracking-tight">
-                Itemized Bill of Quantities (BOQ)
+              <h3 className="text-xs font-semibold text-[var(--text-primary)]">
+                Itemized bill of quantities (BOQ)
               </h3>
-              <span className="font-['JetBrains_Mono'] text-xs font-bold text-[#38bdf8] px-2 py-0.5 rounded bg-[#38bdf8]/10 border border-[#38bdf8]/20">
-                {filteredBOQ.length} Items
+              <span className="font-mono text-[10px] text-[var(--text-muted)] px-1.5 py-0.2 rounded bg-[var(--surface)] border border-[var(--border-subtle)]">
+                {filteredBOQ.length} items
               </span>
             </div>
 
-            {/* Search and Severity Filter Controls */}
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Search Bar */}
               <div className="relative">
-                <Search className="w-3.5 h-3.5 text-[#64748b] absolute left-3 top-1/2 -translate-y-1/2" />
+                <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-2.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  placeholder="Filter by defect ID, road name..."
+                  placeholder="Filter by defect ID, road..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="bg-[#101419] border border-[#414752] rounded-xl py-1.5 pl-8 pr-3 text-xs text-[#e0e2ea] placeholder-[#64748b] focus:outline-none focus:border-[#38bdf8] w-56"
+                  className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-lg py-1 pl-7 pr-2.5 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] w-52"
                 />
               </div>
 
-              {/* Severity Filter Chips */}
-              <div className="flex items-center rounded-xl bg-[#101419] p-1 border border-[#414752]">
-                {['ALL', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].map((sev) => (
-                  <button
-                    key={sev}
-                    onClick={() => setSeverityFilter(sev)}
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold font-['JetBrains_Mono'] transition-colors cursor-pointer ${
-                      severityFilter === sev
-                        ? 'bg-[#38bdf8] text-[#00315c] shadow-sm'
-                        : 'text-[#94a3b8] hover:text-[#e0e2ea]'
-                    }`}
-                  >
-                    {sev}
-                  </button>
-                ))}
-              </div>
+              <SegmentedControl
+                size="sm"
+                value={severityFilter}
+                onChange={(v) => setSeverityFilter(v)}
+                options={[
+                  { value: 'ALL', label: 'All' },
+                  { value: 'CRITICAL', label: 'Critical' },
+                  { value: 'HIGH', label: 'High' },
+                  { value: 'MEDIUM', label: 'Medium' },
+                  { value: 'LOW', label: 'Low' },
+                ]}
+              />
             </div>
           </div>
 
-          {/* Granular Table */}
+          {/* Table */}
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+            <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="bg-[#101419] border-b border-[#30363d] text-[10px] font-['JetBrains_Mono'] text-[#94a3b8] uppercase tracking-wider">
-                  <th className="py-3 px-4">Defect / Crop</th>
-                  <th className="py-3 px-4">Chainage Location</th>
-                  <th className="py-3 px-4">GNSS Coords</th>
-                  <th className="py-3 px-4">Dimensions</th>
-                  <th className="py-3 px-4">Recommended Technique</th>
-                  <th className="py-3 px-4 text-right">Estimated Cost</th>
-                  <th className="py-3 px-4 text-center">Action</th>
+                <tr className="bg-[var(--surface-raised)] border-b border-[var(--border-subtle)] text-[11px] font-medium text-[var(--text-muted)]">
+                  <th className="py-2.5 px-4">Defect</th>
+                  <th className="py-2.5 px-4">Chainage location</th>
+                  <th className="py-2.5 px-4">Coordinates</th>
+                  <th className="py-2.5 px-4">Dimensions</th>
+                  <th className="py-2.5 px-4">Technique</th>
+                  <th className="py-2.5 px-4 text-right">Estimated cost</th>
+                  <th className="py-2.5 px-4 text-center">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#272a30] text-xs font-['Inter']">
+              <tbody className="divide-y divide-[var(--border-subtle)]">
                 {filteredBOQ.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-8 text-center text-[#8b949e]">
-                      No defects match the selected filters or corridor.
+                    <td colSpan={7} className="py-12 text-center">
+                      <EmptyState
+                        title="No defects match filter"
+                        description="Adjust your search criteria or corridor filter."
+                      />
                     </td>
                   </tr>
                 ) : (
                   filteredBOQ.map((item) => {
-                    const sevColor =
+                    const dotStatus =
                       item.severity === 'CRITICAL'
-                        ? 'text-red-400 bg-red-400/10 border-red-500/30'
+                        ? 'critical'
                         : item.severity === 'HIGH'
-                        ? 'text-orange-400 bg-orange-400/10 border-orange-500/30'
-                        : item.severity === 'MEDIUM'
-                        ? 'text-yellow-400 bg-yellow-400/10 border-yellow-500/30'
-                        : 'text-emerald-400 bg-emerald-400/10 border-emerald-500/30';
-
-                    const imageSrc = getEvidenceUrl(item.evidence_url);
+                        ? 'high'
+                        : item.severity === 'LOW'
+                        ? 'low'
+                        : 'medium';
 
                     return (
-                      <tr key={item.id} className="hover:bg-[#161a23] transition-colors">
-                        {/* Defect ID & Crop Thumbnail Preview */}
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-3">
-                            <div className="relative group w-11 h-11 rounded-lg overflow-hidden border border-[#414752] bg-[#0b0e14] shrink-0">
-                              <img
-                                src={imageSrc || undefined}
-                                alt="Defect crop"
-                                className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-125"
-
-                                onError={(e) => {
-                                  (e.target as HTMLImageElement).src =
-                                    'https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?w=100&auto=format&fit=crop&q=60';
-                                }}
-                              />
-                            </div>
+                      <tr
+                        key={item.id}
+                        className="hover:bg-[var(--surface-raised)]/60 transition-colors duration-100"
+                      >
+                        <td className="py-2.5 px-4">
+                          <div className="flex items-center gap-2.5">
+                            <StatusDot status={dotStatus} />
                             <div>
-                              <div className="font-['JetBrains_Mono'] font-bold text-[#e0e2ea]">
+                              <div className="font-mono text-xs font-medium text-[var(--text-primary)]">
                                 DEF-{String(item.id).padStart(4, '0')}
                               </div>
-                              <span
-                                className={`text-[9px] font-bold px-1.5 py-0.5 rounded border inline-block mt-0.5 uppercase ${sevColor}`}
-                              >
-                                {item.severity}
-                              </span>
+                              <div className="text-[11px] text-[var(--text-muted)]">
+                                {item.type}
+                              </div>
                             </div>
                           </div>
                         </td>
 
-                        {/* Location / Chainage */}
-                        <td className="py-3 px-4">
-                          <div className="font-semibold text-[#cbd5e1]">{item.location_label}</div>
-                          <div className="text-[11px] text-[#8b949e]">{item.route_name}</div>
+                        <td className="py-2.5 px-4 text-[var(--text-secondary)]">
+                          <div className="font-medium text-[var(--text-primary)]">
+                            {item.location_label}
+                          </div>
+                          <div className="text-[11px] text-[var(--text-muted)]">
+                            {item.route_name}
+                          </div>
                         </td>
 
-                        {/* GNSS Coords */}
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-1.5 font-['JetBrains_Mono'] text-[11px] text-[#94a3b8]">
+                        <td className="py-2.5 px-4">
+                          <div className="flex items-center gap-1.5 font-mono text-[11px] text-[var(--text-muted)]">
                             <span>
                               {item.lat.toFixed(5)}, {item.lon.toFixed(5)}
                             </span>
                             <button
                               onClick={() => handleCopyCoords(item)}
-                              title="Copy GNSS Coordinates"
-                              className="text-[#64748b] hover:text-[#38bdf8] transition-colors cursor-pointer"
+                              title="Copy Coordinates"
+                              className="text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
                             >
                               {copiedId === item.id ? (
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                <Check className="w-3 h-3 text-emerald-500" />
                               ) : (
-                                <Copy className="w-3.5 h-3.5" />
+                                <Copy className="w-3 h-3" />
                               )}
                             </button>
                           </div>
                         </td>
 
-                        {/* Dimensions & Depth Tier */}
-                        <td className="py-3 px-4">
-                          <div className="font-['JetBrains_Mono'] font-semibold text-[#e0e2ea]">
-                            {item.estimated_area_sq_m.toFixed(2)} m²
-                          </div>
-                          <div className="text-[10px] text-[#8b949e] truncate max-w-[150px]">
-                            {item.severity_tier}
-                          </div>
+                        <td className="py-2.5 px-4 font-mono text-xs text-[var(--text-secondary)]">
+                          {item.estimated_area_sq_m.toFixed(2)} m²
                         </td>
 
-                        {/* Recommended Technique */}
-                        <td className="py-3 px-4">
-                          <span className="font-semibold px-2 py-0.5 rounded-lg bg-[#38bdf8]/10 text-[#38bdf8] border border-[#38bdf8]/30 text-xs inline-block">
-                            {item.repair_method}
-                          </span>
+                        <td className="py-2.5 px-4 text-[var(--text-secondary)]">
+                          {item.repair_method}
                         </td>
 
-                        {/* Estimated Cost */}
-                        <td className="py-3 px-4 text-right">
-                          <div className="font-['JetBrains_Mono'] text-sm font-bold text-[#38bdf8]">
-                            ₹{item.estimated_cost.toLocaleString('en-IN')}
-                          </div>
-                          <div className="text-[10px] text-[#64748b]">Includes Mob. Fee</div>
+                        <td className="py-2.5 px-4 text-right font-mono text-xs font-semibold text-[var(--text-primary)]">
+                          ₹{item.estimated_cost.toLocaleString('en-IN')}
                         </td>
 
-                        {/* Action: Open Work Order / Inspect */}
-                        <td className="py-3 px-4 text-center">
-                          <button
+                        <td className="py-2.5 px-4 text-center">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            icon={<FileText className="w-3.5 h-3.5" />}
                             onClick={() => handleOpenDispatchModal(item)}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#1f242d] hover:bg-[#38bdf8] hover:text-[#00315c] text-[#cbd5e1] transition-colors cursor-pointer border border-[#30363d]"
                           >
-                            <ExternalLink className="w-3.5 h-3.5" />
-                            <span>Work Order</span>
-                          </button>
+                            Dispatch
+                          </Button>
                         </td>
                       </tr>
                     );
@@ -801,38 +742,29 @@ export function CostBudget() {
               </tbody>
             </table>
           </div>
-
-          {/* Table Footer Summary */}
-          <div className="p-3.5 bg-[#101419] border-t border-[#30363d] flex items-center justify-between text-xs text-[#94a3b8] px-6">
-            <span>
-              Showing {filteredBOQ.length} of {boqItems?.length || 0} corridor repair items
-            </span>
-            <div className="flex items-center gap-2">
-              <span>Selected Subtotal:</span>
-              <span className="font-['JetBrains_Mono'] text-sm font-bold text-[#38bdf8]">
-                ₹{filteredBOQ.reduce((acc, curr) => acc + curr.estimated_cost, 0).toLocaleString('en-IN')}
-              </span>
-            </div>
-          </div>
-        </section>
+        </Card>
       </div>
 
-      {/* Unit Rates Configuration Modal */}
-      <UnitRatesModal
-        isOpen={isRatesModalOpen}
-        onClose={() => setIsRatesModalOpen(false)}
-        rates={activeRates}
-        onSave={async (newRates) => {
-          await updateRatesMutation.mutateAsync(newRates);
-        }}
-        onReset={async () => {
-          await resetRatesMutation.mutateAsync();
-        }}
-      />
+      {/* Unit Rates Config Modal */}
+      {rates && (
+        <UnitRatesModal
+          isOpen={isRatesModalOpen}
+          onClose={() => setIsRatesModalOpen(false)}
+          rates={rates}
+          onSave={async (newRates) => {
+            await updateRatesMutation.mutateAsync(newRates);
+          }}
+          onReset={async () => {
+            await resetUnitRates();
+            queryClient.invalidateQueries({ queryKey: ['cost-rates'] });
+            queryClient.invalidateQueries({ queryKey: ['cost-summary'] });
+          }}
+        />
+      )}
 
-      {/* Work Order Modal Dispatcher */}
+      {/* Work Order Modal */}
       <WorkOrderModal
-        isOpen={activeWorkOrderData !== null}
+        isOpen={Boolean(activeWorkOrderData)}
         onClose={() => setActiveWorkOrderData(null)}
         data={activeWorkOrderData}
       />

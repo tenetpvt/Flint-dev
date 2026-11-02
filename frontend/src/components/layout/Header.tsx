@@ -3,29 +3,41 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { fetchAnalyticsSummary } from '../../services/analytics';
 import { fetchAlerts } from '../../services/alerts';
+import { useTheme } from '../../context/ThemeContext';
 import {
+  Bell,
+  Sun,
+  Moon,
+  Monitor,
+  User,
   ShieldCheck,
   Building2,
+  MapPin,
+  Briefcase,
+  Check,
   ExternalLink,
   Database,
-  Check,
-  MapPin,
-  Briefcase
 } from 'lucide-react';
 
 export function Header() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { mode, setMode } = useTheme();
+
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [activeRole, setActiveRole] = useState<'EXECUTIVE_ENGINEER' | 'FIELD_INSPECTOR'>('EXECUTIVE_ENGINEER');
+  const [activeRole, setActiveRole] = useState<'EXECUTIVE_ENGINEER' | 'FIELD_INSPECTOR'>(
+    'EXECUTIVE_ENGINEER'
+  );
   const profileRef = useRef<HTMLDivElement>(null);
 
-  const { data: summary } = useQuery({ queryKey: ['analytics-summary'], queryFn: fetchAnalyticsSummary });
+  const { data: summary } = useQuery({
+    queryKey: ['analytics-summary'],
+    queryFn: fetchAnalyticsSummary,
+  });
   const { data: alerts } = useQuery({ queryKey: ['alerts'], queryFn: fetchAlerts });
 
-  const unreadAlertsCount = alerts?.filter(a => a.status === 'NEW').length || 0;
+  const unreadAlertsCount = alerts?.filter((a) => a.status === 'NEW').length || 0;
 
-  // Close dropdown on click outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
@@ -41,186 +53,221 @@ export function Header() {
   }, [isProfileOpen]);
 
   const titleMap: Record<string, string> = {
-    '/command-center': 'COMMAND CENTER',
-    '/live-map': 'LIVE MAP',
-    '/analytics': 'ANALYTICS',
-    '/cost-budget': 'COST & BUDGET',
-    '/live-alerts': 'LIVE ALERTS',
-    '/complaints': 'COMPLAINTS',
-    '/grievances': 'COMPLAINTS',
-    '/video-vault': 'VIDEO VAULT',
-    '/fleet': 'FLEET',
-    '/system-status': 'SYSTEM STATUS',
+    '/command-center': 'Command center',
+    '/live-map': 'Live map',
+    '/analytics': 'Analytics',
+    '/cost-budget': 'Cost & budget',
+    '/live-alerts': 'Live alerts',
+    '/complaints': 'Complaints',
+    '/grievances': 'Complaints',
+    '/video-vault': 'Video vault',
+    '/fleet': 'Fleet',
+    '/system-status': 'System status',
   };
 
-  const currentTitle = titleMap[location.pathname] || 'DASHBOARD';
+  const currentTitle = titleMap[location.pathname] || 'Dashboard';
 
   return (
-    <header className="h-14 bg-[#0b0e14] border-b border-[#414752] flex justify-between items-center px-5 shrink-0 z-40 relative">
-      <div className="flex items-center">
-        <h2 className="font-['Inter'] text-[17px] font-bold text-[#e0e2ea] mr-3 tracking-tight">
+    <header className="h-12 bg-[var(--surface)] border-b border-[var(--border-subtle)] flex justify-between items-center px-4 shrink-0 z-40 relative select-none">
+      {/* Left Title & Fleet Status */}
+      <div className="flex items-center gap-3 min-w-0">
+        <h1 className="text-sm font-semibold text-[var(--text-primary)] tracking-tight">
           {currentTitle}
-        </h2>
-        <div className="h-4 w-px bg-[#414752] mx-3"></div>
-        <span className="text-[#c0c7d4] font-['Inter'] text-xs">Raipur, Chhattisgarh</span>
-        <div className="h-4 w-px bg-[#414752] mx-3"></div>
-        <div className="flex items-center text-[#c0c7d4] font-['JetBrains_Mono'] text-[11px] space-x-2">
-          <span className="w-2 h-2 rounded-full bg-[#a2c9ff] mr-1"></span>
+        </h1>
+        <span className="text-[var(--border-strong)]">/</span>
+        <span className="text-xs text-[var(--text-secondary)]">Raipur, Chhattisgarh</span>
+        <span className="text-[var(--border-strong)] hidden md:inline">/</span>
+        <div className="hidden md:flex items-center gap-2 text-xs text-[var(--text-muted)]">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#34D399]" />
           <span>
             {summary
-              ? `${summary.active_buses}/6 Buses Online · ${summary.completed_routes} Route Completed · Last Report 3m ago`
-              : 'Loading fleet status...'}
+              ? `${summary.active_buses} of 6 buses online · ${summary.completed_routes} routes completed`
+              : 'Connecting fleet...'}
           </span>
         </div>
       </div>
 
-      <div className="flex items-center space-x-2 text-[#c0c7d4] relative">
-        {/* Bell Icon: Routes directly to Live Alerts with unread indicator badge */}
+      {/* Right Controls: Notifications & User Profile */}
+      <div className="flex items-center gap-1 text-[var(--text-secondary)]">
+        {/* Notifications */}
         <button
           onClick={() => navigate('/live-alerts')}
-          className="relative material-symbols-outlined hover:text-[#a2c9ff] transition-colors text-[20px] w-8 h-8 rounded-full hover:bg-[#272a30] flex items-center justify-center cursor-pointer"
-          title="View Live Alerts"
+          className="relative w-8 h-8 rounded-md flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors duration-150 cursor-pointer"
+          title="Live alerts"
+          aria-label="Live alerts"
         >
-          notifications
+          <Bell className="w-4 h-4" strokeWidth={1.5} />
           {unreadAlertsCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white font-['JetBrains_Mono'] text-[9px] font-bold rounded-full h-4 min-w-[16px] px-1 flex items-center justify-center border-2 border-[#0b0e14] shadow-sm animate-pulse">
-              {unreadAlertsCount}
-            </span>
+            <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-[#F0524F]" />
           )}
         </button>
 
-        {/* Profile Icon: Floating Operator Dropdown Card */}
+        {/* User Menu Dropdown */}
         <div ref={profileRef} className="relative">
           <button
-            onClick={() => setIsProfileOpen(prev => !prev)}
-            className={`material-symbols-outlined transition-colors text-[20px] w-8 h-8 rounded-full flex items-center justify-center cursor-pointer ${
-              isProfileOpen ? 'bg-sky-500/20 text-sky-400 border border-sky-500/40' : 'hover:text-[#a2c9ff] hover:bg-[#272a30]'
+            onClick={() => setIsProfileOpen((p) => !p)}
+            className={`w-8 h-8 rounded-md flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors duration-150 cursor-pointer ${
+              isProfileOpen ? 'bg-[var(--surface-raised)] text-[var(--text-primary)]' : ''
             }`}
-            title="Operator Profile & Authority"
+            title="User menu"
+            aria-label="User menu"
           >
-            account_circle
+            <User className="w-4 h-4" strokeWidth={1.5} />
           </button>
 
-          {/* Floating Operator Dropdown Menu */}
           {isProfileOpen && (
-            <div className="absolute right-0 mt-2.5 w-84 bg-[#0d1117] border border-[#30363d] rounded-2xl shadow-2xl overflow-hidden z-50 divide-y divide-[#21262d]">
-              {/* Operator Header */}
-              <div className="p-4 bg-gradient-to-b from-[#161b22] to-[#0d1117]">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-sky-600 to-cyan-400 p-0.5 shadow-md">
-                      <div className="w-full h-full bg-[#0d1117] rounded-full flex items-center justify-center text-sky-400 font-bold text-xs font-['JetBrains_Mono']">
-                        AS
-                      </div>
+            <div className="absolute right-0 mt-2 w-80 bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl shadow-xl overflow-hidden z-50 divide-y divide-[var(--border-subtle)]">
+              {/* User Identity */}
+              <div className="p-3.5 bg-[var(--surface-raised)]/50">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-full bg-[var(--surface-raised)] border border-[var(--border-strong)] flex items-center justify-center text-xs font-semibold text-[var(--accent)] font-mono">
+                      AS
                     </div>
                     <div>
-                      <h3 className="text-sm font-semibold text-white tracking-tight leading-none">
+                      <h2 className="text-xs font-semibold text-[var(--text-primary)] leading-tight">
                         Er. Alok Sharma
-                      </h3>
-                      <p className="text-[11px] text-[#8b949e] mt-1 flex items-center gap-1">
-                        <Briefcase className="w-3 h-3 text-sky-400" />
+                      </h2>
+                      <p className="text-[11px] text-[var(--text-muted)] flex items-center gap-1 mt-0.5">
+                        <Briefcase className="w-3 h-3" strokeWidth={1.5} />
                         Executive Engineer (Civil)
                       </p>
                     </div>
                   </div>
-                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1 animate-pulse"></span>
-                    ON DUTY
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                    Active
                   </span>
                 </div>
 
-                {/* Organization & Jurisdiction */}
-                <div className="mt-3.5 pt-3 border-t border-[#21262d] space-y-1.5 text-[11px]">
-                  <div className="flex items-center justify-between text-[#8b949e]">
+                <div className="mt-3 pt-2.5 border-t border-[var(--border-subtle)] space-y-1 text-[11px] text-[var(--text-muted)]">
+                  <div className="flex justify-between">
                     <span className="flex items-center gap-1.5">
-                      <Building2 className="w-3.5 h-3.5 text-[#58a6ff]" />
-                      Authority:
+                      <Building2 className="w-3 h-3" strokeWidth={1.5} />
+                      Authority
                     </span>
-                    <span className="text-slate-200 font-medium">Raipur Municipal Corp · PWD</span>
+                    <span className="text-[var(--text-secondary)] font-medium">
+                      Raipur Municipal Corp · PWD
+                    </span>
                   </div>
-                  <div className="flex items-center justify-between text-[#8b949e]">
+                  <div className="flex justify-between">
                     <span className="flex items-center gap-1.5">
-                      <MapPin className="w-3.5 h-3.5 text-amber-400" />
-                      Jurisdiction:
+                      <MapPin className="w-3 h-3" strokeWidth={1.5} />
+                      Jurisdiction
                     </span>
-                    <span className="text-slate-200 font-medium font-['JetBrains_Mono']">NH-30 & GE Road</span>
+                    <span className="font-mono text-[var(--text-secondary)]">NH-30 & GE Road</span>
                   </div>
-                  <div className="flex items-center justify-between text-[#8b949e]">
+                  <div className="flex justify-between">
                     <span className="flex items-center gap-1.5">
-                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                      Clearance:
+                      <ShieldCheck className="w-3 h-3" strokeWidth={1.5} />
+                      Clearance
                     </span>
-                    <span className="text-emerald-400 font-medium">Level 3 (Work Order Dispatch)</span>
+                    <span className="text-[var(--accent)]">Level 3 (Work order dispatch)</span>
                   </div>
                 </div>
               </div>
 
-              {/* Demo Role Switcher */}
-              <div className="p-3 bg-[#0d1117]">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-[#8b949e] px-1 mb-2">
-                  Simulation Role Perspective
+              {/* Appearance Mode Selector (Light, Dark, System) */}
+              <div className="p-2">
+                <div className="text-[10px] font-medium text-[var(--text-muted)] px-2 py-1">
+                  Appearance
                 </div>
-                <div className="grid grid-cols-2 gap-1.5">
+                <div className="grid grid-cols-3 gap-1 px-1">
                   <button
-                    onClick={() => setActiveRole('EXECUTIVE_ENGINEER')}
-                    className={`px-2.5 py-1.5 rounded-lg text-xs font-medium text-left flex items-center justify-between transition-colors cursor-pointer ${
-                      activeRole === 'EXECUTIVE_ENGINEER'
-                        ? 'bg-sky-500/15 text-sky-300 border border-sky-500/40'
-                        : 'bg-[#161b22] text-[#8b949e] hover:text-white border border-[#21262d]'
+                    onClick={() => setMode('light')}
+                    className={`px-2 py-1.5 rounded-md text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                      mode === 'light'
+                        ? 'bg-[var(--surface-raised)] text-[var(--text-primary)] font-semibold border border-[var(--border-strong)]'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                     }`}
                   >
-                    <span>Exec. Engineer</span>
-                    {activeRole === 'EXECUTIVE_ENGINEER' && <Check className="w-3 h-3 text-sky-400" />}
+                    <Sun className="w-3 h-3" strokeWidth={1.5} />
+                    <span>Light</span>
+                  </button>
+                  <button
+                    onClick={() => setMode('dark')}
+                    className={`px-2 py-1.5 rounded-md text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                      mode === 'dark'
+                        ? 'bg-[var(--surface-raised)] text-[var(--text-primary)] font-semibold border border-[var(--border-strong)]'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                    }`}
+                  >
+                    <Moon className="w-3 h-3" strokeWidth={1.5} />
+                    <span>Dark</span>
+                  </button>
+                  <button
+                    onClick={() => setMode('system')}
+                    className={`px-2 py-1.5 rounded-md text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                      mode === 'system'
+                        ? 'bg-[var(--surface-raised)] text-[var(--text-primary)] font-semibold border border-[var(--border-strong)]'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                    }`}
+                  >
+                    <Monitor className="w-3 h-3" strokeWidth={1.5} />
+                    <span>System</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Perspective Role Switcher */}
+              <div className="p-2">
+                <div className="text-[10px] font-medium text-[var(--text-muted)] px-2 py-1">
+                  Perspective
+                </div>
+                <div className="grid grid-cols-2 gap-1 px-1">
+                  <button
+                    onClick={() => setActiveRole('EXECUTIVE_ENGINEER')}
+                    className={`px-2 py-1.5 rounded-md text-xs font-medium text-left flex items-center justify-between transition-colors cursor-pointer ${
+                      activeRole === 'EXECUTIVE_ENGINEER'
+                        ? 'bg-[var(--surface-raised)] text-[var(--text-primary)] font-semibold border border-[var(--border-strong)]'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                    }`}
+                  >
+                    <span>Exec. engineer</span>
+                    {activeRole === 'EXECUTIVE_ENGINEER' && (
+                      <Check className="w-3 h-3 text-[var(--accent)]" strokeWidth={2} />
+                    )}
                   </button>
                   <button
                     onClick={() => setActiveRole('FIELD_INSPECTOR')}
-                    className={`px-2.5 py-1.5 rounded-lg text-xs font-medium text-left flex items-center justify-between transition-colors cursor-pointer ${
+                    className={`px-2 py-1.5 rounded-md text-xs font-medium text-left flex items-center justify-between transition-colors cursor-pointer ${
                       activeRole === 'FIELD_INSPECTOR'
-                        ? 'bg-sky-500/15 text-sky-300 border border-sky-500/40'
-                        : 'bg-[#161b22] text-[#8b949e] hover:text-white border border-[#21262d]'
+                        ? 'bg-[var(--surface-raised)] text-[var(--text-primary)] font-semibold border border-[var(--border-strong)]'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                     }`}
                   >
-                    <span>Field Inspector</span>
-                    {activeRole === 'FIELD_INSPECTOR' && <Check className="w-3 h-3 text-sky-400" />}
+                    <span>Field inspector</span>
+                    {activeRole === 'FIELD_INSPECTOR' && (
+                      <Check className="w-3 h-3 text-[var(--accent)]" strokeWidth={2} />
+                    )}
                   </button>
                 </div>
               </div>
 
-              {/* Quick Navigation Links */}
-              <div className="p-2 space-y-0.5 bg-[#0d1117]">
+              {/* Navigation Shortcuts */}
+              <div className="p-1.5 space-y-0.5">
                 <button
                   onClick={() => {
                     setIsProfileOpen(false);
                     navigate('/complaints');
                   }}
-                  className="w-full px-2.5 py-2 text-xs text-[#c9d1d9] hover:text-white hover:bg-[#161b22] rounded-lg flex items-center justify-between transition-colors cursor-pointer"
+                  className="w-full px-2.5 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] rounded-md flex items-center justify-between transition-colors duration-150 cursor-pointer"
                 >
-                  <span className="flex items-center gap-2">
-                    <Briefcase className="w-3.5 h-3.5 text-sky-400" />
-                    My Dispatched Complaints
-                  </span>
-                  <ExternalLink className="w-3 h-3 text-[#6e7681]" />
+                  <span>My dispatched complaints</span>
+                  <ExternalLink className="w-3 h-3 text-[var(--text-muted)]" strokeWidth={1.5} />
                 </button>
-
                 <button
                   onClick={() => {
                     setIsProfileOpen(false);
                     navigate('/system-status');
                   }}
-                  className="w-full px-2.5 py-2 text-xs text-[#c9d1d9] hover:text-white hover:bg-[#161b22] rounded-lg flex items-center justify-between transition-colors cursor-pointer"
+                  className="w-full px-2.5 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] rounded-md flex items-center justify-between transition-colors duration-150 cursor-pointer"
                 >
-                  <span className="flex items-center gap-2">
-                    <Database className="w-3.5 h-3.5 text-emerald-400" />
-                    Cloud Database & Edge Health
+                  <span className="flex items-center gap-1.5">
+                    <Database className="w-3 h-3" strokeWidth={1.5} />
+                    Cloud database & health
                   </span>
-                  <ExternalLink className="w-3 h-3 text-[#6e7681]" />
+                  <ExternalLink className="w-3 h-3 text-[var(--text-muted)]" strokeWidth={1.5} />
                 </button>
-              </div>
-
-              {/* Footer */}
-              <div className="px-4 py-2.5 bg-[#161b22] flex items-center justify-between text-[11px] text-[#8b949e]">
-                <span className="font-['JetBrains_Mono'] text-[10px]">FLINT OS v2.4</span>
-                <span className="text-sky-400/80">Raipur Smart City</span>
               </div>
             </div>
           )}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Map as MapLibreMap, NavigationControl, Marker, LngLatBounds } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -17,8 +17,21 @@ import { MOCK_ROUTES, MOCK_JOURNEYS, MOCK_ANALYTICS_SUMMARY } from '../services/
 import { WorkOrderModal } from '../components/ui/WorkOrderModal';
 import type { WorkOrderData } from '../components/ui/WorkOrderModal';
 import { useLiveStream } from '../services/useLiveStream';
+import { GlassPanel } from '../components/ui/GlassPanel';
+import { Button } from '../components/ui/Button';
+import { EmptyState } from '../components/ui/EmptyState';
+import { StatusDot } from '../components/ui/StatusDot';
+import {
+  Layers,
+  Map as MapIcon,
+  PanelRightClose,
+  PanelRightOpen,
+  Route as RouteIcon,
+  X,
+  ArrowRight,
+  Bus,
+} from 'lucide-react';
 
-// Parse Route 1 Coordinates for synchronized map tracking (Raipur NH-30 corridor)
 const RAW_ROUTE_COORDS: [number, number][] = (() => {
   try {
     const raw = MOCK_ROUTES[0]?.geojson_path;
@@ -28,132 +41,154 @@ const RAW_ROUTE_COORDS: [number, number][] = (() => {
   }
 })();
 
-// Refined KPI Strip
-function KPIStrip({ summary, isConnected }: { summary: AnalyticsSummary; isConnected?: boolean }) {
+// Slim KPI Strip as a floating glass panel
+function SlimKPIStrip({
+  summary,
+  isConnected,
+}: {
+  summary: AnalyticsSummary;
+  isConnected?: boolean;
+}) {
   return (
-    <div className="bg-[#181c21] border-b border-[#414752] px-5 py-2.5 flex justify-between items-center z-30 shrink-0">
-      <div className="flex items-center divide-x divide-[#414752]">
-        <div className="flex items-center pr-6">
-          <div className="flex flex-col">
-            <span className="font-['Inter'] text-[10px] font-bold text-[#c0c7d4] tracking-[0.05em] uppercase mb-0.5">BUSES ACTIVE</span>
-            <span className="font-['JetBrains_Mono'] text-[24px] font-bold text-[#e0e2ea] leading-[28px]">{summary.active_buses}</span>
-          </div>
-        </div>
-        <div className="flex items-center px-6">
-          <div className="flex flex-col">
-            <span className="font-['Inter'] text-[10px] font-bold text-[#c0c7d4] tracking-[0.05em] uppercase mb-0.5">ROUTES COMPLETED</span>
-            <span className="font-['JetBrains_Mono'] text-[24px] font-bold text-[#38bdf8] leading-[28px]">{summary.completed_routes}</span>
-          </div>
-        </div>
-        <div className="flex items-center px-6">
-          <div className="flex flex-col">
-            <span className="font-['Inter'] text-[10px] font-bold text-[#c0c7d4] tracking-[0.05em] uppercase mb-0.5">DETECTIONS TODAY</span>
-            <span className="font-['JetBrains_Mono'] text-[24px] font-bold text-[#e0e2ea] leading-[28px]">{summary.total_findings}</span>
-          </div>
-        </div>
-        <div className="flex items-center px-6">
-          <div className="flex flex-col">
-            <span className="font-['Inter'] text-[10px] font-bold text-[#c0c7d4] tracking-[0.05em] uppercase mb-0.5">REPORTS GENERATED</span>
-            <span className="font-['JetBrains_Mono'] text-[24px] font-bold text-[#ffba42] leading-[28px]">{summary.completed_routes}</span>
-          </div>
-        </div>
-        <div className="flex items-center pl-6">
-          <div className="flex flex-col">
-            <span className="font-['Inter'] text-[10px] font-bold text-[#c0c7d4] tracking-[0.05em] uppercase mb-0.5">HIGH-SEVERITY FINDINGS</span>
-            <span className="font-['JetBrains_Mono'] text-[24px] font-bold text-[#ffb4ab] leading-[28px]">{summary.live_alerts}</span>
-          </div>
-        </div>
+    <GlassPanel className="hidden lg:flex items-center gap-5 px-4 py-2 text-xs">
+      <div className="flex items-center gap-1.5">
+        <span className="text-[var(--text-muted)] text-[11px]">Buses online</span>
+        <span className="font-mono text-sm font-semibold tabular-nums text-[var(--text-primary)]">
+          {summary.active_buses}
+        </span>
       </div>
-      <div className="flex items-center space-x-3">
-        <div className="text-right">
-          <div className="font-['JetBrains_Mono'] text-[10px] font-bold text-[#c0c7d4] tracking-[0.05em] uppercase mb-0.5">EDGE INGESTION</div>
-          <div className={`font-['Inter'] text-[12px] font-semibold flex items-center justify-end font-bold ${isConnected ? 'text-emerald-400' : 'text-[#38bdf8]'}`}>
-            <span className={`w-2 h-2 rounded-full mr-1.5 ${isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-[#38bdf8] animate-pulse-ring'}`}></span>
-            {isConnected ? 'CUDA RTX 3050 (LIVE)' : 'STANDALONE MODE'}
-          </div>
-        </div>
+      <div className="w-px h-3.5 bg-[var(--border-subtle)]" />
+      <div className="flex items-center gap-1.5">
+        <span className="text-[var(--text-muted)] text-[11px]">Routes completed</span>
+        <span className="font-mono text-sm font-semibold tabular-nums text-[var(--text-primary)]">
+          {summary.completed_routes}
+        </span>
       </div>
-    </div>
+      <div className="w-px h-3.5 bg-[var(--border-subtle)]" />
+      <div className="flex items-center gap-1.5">
+        <span className="text-[var(--text-muted)] text-[11px]">Detections today</span>
+        <span className="font-mono text-sm font-semibold tabular-nums text-[var(--text-primary)]">
+          {summary.total_findings}
+        </span>
+      </div>
+      <div className="w-px h-3.5 bg-[var(--border-subtle)]" />
+      <div className="flex items-center gap-1.5">
+        <span className="text-[var(--text-muted)] text-[11px]">High severity</span>
+        <span className="font-mono text-sm font-semibold tabular-nums text-[#F0524F]">
+          {summary.live_alerts}
+        </span>
+      </div>
+      <div className="w-px h-3.5 bg-[var(--border-subtle)]" />
+      <div className="flex items-center gap-1.5">
+        <span
+          className={`w-1.5 h-1.5 rounded-full ${
+            isConnected ? 'bg-[#34D399]' : 'bg-[var(--accent)]'
+          }`}
+        />
+        <span className="text-[11px] text-[var(--text-secondary)]">
+          {isConnected ? 'Edge live' : 'Standalone'}
+        </span>
+      </div>
+    </GlassPanel>
   );
 }
 
-// Compact Route Intelligence Context Card over Map
-function RouteIntelligenceOverlay({ journey, onClose }: { journey: Journey; onClose: () => void }) {
+// Route Intelligence Context Card over Map
+function RouteIntelligenceOverlay({
+  journey,
+  onClose,
+}: {
+  journey: Journey;
+  onClose: () => void;
+}) {
   const navigate = useNavigate();
-  const defects = journey.detections.filter(d => d.type === 'ROAD_DEFECT' || d.type === 'ROAD_BLOCKAGE').length;
-  const traffic = journey.detections.filter(d => d.type === 'TRAFFIC').length;
-  const safety = journey.detections.filter(d => d.type === 'SAFETY').length;
+  const defects = journey.detections.filter(
+    (d) => d.type === 'ROAD_DEFECT' || d.type === 'ROAD_BLOCKAGE'
+  ).length;
+  const traffic = journey.detections.filter((d) => d.type === 'TRAFFIC').length;
+  const safety = journey.detections.filter((d) => d.type === 'SAFETY').length;
 
   return (
-    <div className="glass-panel rounded-xl p-4 w-[320px] pointer-events-auto shadow-2xl border border-[#414752] animate-in fade-in zoom-in-95 duration-200">
-      <div className="flex items-start justify-between border-b border-[#414752] pb-2.5 mb-3">
-        <div>
+    <GlassPanel className="p-4 w-[310px] shadow-xl">
+      <div className="flex items-start justify-between border-b border-[var(--border-subtle)] pb-2.5 mb-3">
+        <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className="font-['JetBrains_Mono'] text-[14px] font-bold text-[#38bdf8] uppercase tracking-wide">
+            <span className="font-mono text-xs font-semibold text-[var(--accent)]">
               {journey.bus.name}
             </span>
-            <span className="text-[#8b919d]">·</span>
-            <span className="font-['Inter'] text-[13px] font-semibold text-[#e0e2ea]">
-              {journey.route.name} · {journey.route.description}
+            <span className="text-[var(--text-muted)]">·</span>
+            <span className="text-xs font-medium text-[var(--text-primary)] truncate">
+              {journey.route.name}
             </span>
           </div>
           <div className="flex items-center gap-2 mt-1">
-            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold font-['JetBrains_Mono'] bg-[#38bdf8]/15 text-[#38bdf8] border border-[#38bdf8]/30">
-              ● {journey.status === 'COMPLETED' ? 'JOURNEY COMPLETED' : 'IN TRANSIT'}
-            </span>
-            <span className="text-[11px] font-['JetBrains_Mono'] text-[#c0c7d4]">
-              {journey.route.distance_km} km · 33 min
+            <StatusDot
+              status={journey.status === 'COMPLETED' ? 'success' : 'info'}
+              label={journey.status === 'COMPLETED' ? 'Completed' : 'In transit'}
+            />
+            <span className="text-[11px] font-mono text-[var(--text-muted)]">
+              {journey.route.distance_km} km
             </span>
           </div>
         </div>
         <button
           onClick={onClose}
-          className="text-[#c0c7d4] hover:text-[#e0e2ea] p-1 rounded hover:bg-[#272a30] transition-colors cursor-pointer"
+          aria-label="Close route context"
+          className="text-[var(--text-muted)] hover:text-[var(--text-primary)] p-1 rounded hover:bg-[var(--surface-raised)] transition-colors cursor-pointer"
         >
-          <span className="material-symbols-outlined text-[18px]">close</span>
+          <X className="w-3.5 h-3.5" strokeWidth={1.5} />
         </button>
       </div>
 
-      <div className="space-y-2 mb-3.5">
-        <div className="flex justify-between items-center text-xs">
-          <span className="font-['Inter'] text-[10px] font-bold text-[#c0c7d4] tracking-wider uppercase">ROUTE INTELLIGENCE</span>
-          <span className="font-['JetBrains_Mono'] text-[12px] font-bold text-[#e0e2ea]">
-            {journey.detections.length} FINDINGS ACCUMULATED
+      <div className="space-y-2 mb-3.5 text-xs">
+        <div className="flex justify-between items-center text-[11px]">
+          <span className="text-[var(--text-muted)]">Findings accumulated</span>
+          <span className="font-mono font-semibold text-[var(--text-primary)]">
+            {journey.detections.length}
           </span>
         </div>
-        <div className="grid grid-cols-3 gap-1.5 pt-1">
-          <div className="bg-[#181c21] p-2 rounded border border-[#414752]/60 text-center">
-            <div className="text-[10px] text-[#f87171] font-bold uppercase">DEFECTS</div>
-            <div className="font-['JetBrains_Mono'] text-base font-bold text-[#e0e2ea]">{defects}</div>
+        <div className="grid grid-cols-3 gap-1.5 pt-0.5">
+          <div className="bg-[var(--surface)] p-2 rounded-lg border border-[var(--border-subtle)] text-center">
+            <div className="text-[10px] text-[var(--text-muted)]">Defects</div>
+            <div className="font-mono text-sm font-semibold text-[#F0524F]">{defects}</div>
           </div>
-          <div className="bg-[#181c21] p-2 rounded border border-[#414752]/60 text-center">
-            <div className="text-[10px] text-[#fbbf24] font-bold uppercase">TRAFFIC</div>
-            <div className="font-['JetBrains_Mono'] text-base font-bold text-[#e0e2ea]">{traffic}</div>
+          <div className="bg-[var(--surface)] p-2 rounded-lg border border-[var(--border-subtle)] text-center">
+            <div className="text-[10px] text-[var(--text-muted)]">Traffic</div>
+            <div className="font-mono text-sm font-semibold text-[#F59E0B]">{traffic}</div>
           </div>
-          <div className="bg-[#181c21] p-2 rounded border border-[#414752]/60 text-center">
-            <div className="text-[10px] text-[#c084fc] font-bold uppercase">SAFETY</div>
-            <div className="font-['JetBrains_Mono'] text-base font-bold text-[#e0e2ea]">{safety}</div>
+          <div className="bg-[var(--surface)] p-2 rounded-lg border border-[var(--border-subtle)] text-center">
+            <div className="text-[10px] text-[var(--text-muted)]">Safety</div>
+            <div className="font-mono text-sm font-semibold text-[var(--accent)]">{safety}</div>
           </div>
         </div>
       </div>
 
-      <button
+      <Button
+        variant="primary"
+        size="sm"
+        className="w-full"
         onClick={() => navigate(`/live-map?journey=${journey.id}`)}
-        className="w-full bg-[#38bdf8] hover:bg-[#58a6ff] text-[#00315c] font-bold font-['Inter'] text-[11px] tracking-wide uppercase py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-md cursor-pointer"
       >
-        <span className="material-symbols-outlined text-[16px]">analytics</span>
-        REVIEW ROUTE INTELLIGENCE
-      </button>
-    </div>
+        Review route intelligence
+      </Button>
+    </GlassPanel>
   );
 }
 
-// Strengthened Route Report Card
-function RouteReportCard({ journey, isPrimary, onSelect }: { journey: Journey; isPrimary: boolean; onSelect: () => void }) {
+// Route Report Card in Collapsible Drawer
+function RouteReportCard({
+  journey,
+  isPrimary,
+  onSelect,
+}: {
+  journey: Journey;
+  isPrimary: boolean;
+  onSelect: () => void;
+}) {
   const navigate = useNavigate();
-  const defects = journey.detections.filter(d => d.type === 'ROAD_DEFECT' || d.type === 'ROAD_BLOCKAGE').length;
-  const traffic = journey.detections.filter(d => d.type === 'TRAFFIC').length;
-  const safety = journey.detections.filter(d => d.type === 'SAFETY').length;
+  const defects = journey.detections.filter(
+    (d) => d.type === 'ROAD_DEFECT' || d.type === 'ROAD_BLOCKAGE'
+  ).length;
   const totalFindings = journey.detections.length;
 
   const timeDiff = journey.end_time
@@ -161,107 +196,49 @@ function RouteReportCard({ journey, isPrimary, onSelect }: { journey: Journey; i
     : 0;
   const timeLabel = timeDiff < 2 ? 'Just now' : `${timeDiff}m ago`;
 
-  if (isPrimary) {
-    return (
-      <div className="block bg-[#101419] p-4 rounded-xl border border-[#38bdf8]/40 shadow-[0_0_16px_rgba(56,189,248,0.1)] relative">
-        {/* Status Badge */}
-        <div className="flex items-center justify-between mb-3 border-b border-[#414752]/50 pb-2.5">
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-[#38bdf8]"></span>
-            <span className="font-['JetBrains_Mono'] text-[10px] font-bold text-[#38bdf8] uppercase tracking-wider">
-              ● GENERATED
-            </span>
-          </div>
-          <span className="text-[#8b919d] font-['JetBrains_Mono'] text-[11px]">{timeLabel}</span>
-        </div>
-
-        {/* Route Info */}
-        <div className="flex items-start mb-3 cursor-pointer" onClick={onSelect}>
-          <div className="w-10 h-10 rounded-lg bg-[#38bdf8]/15 flex items-center justify-center mr-3 shrink-0 border border-[#38bdf8]/30">
-            <span className="material-symbols-outlined text-[#38bdf8] text-[22px]">directions_bus</span>
-          </div>
-          <div>
-            <div className="font-['JetBrains_Mono'] text-[10px] font-bold text-[#38bdf8] tracking-[0.05em] uppercase mb-0.5">
-              NEW ROUTE REPORT
-            </div>
-            <h4 className="font-['Inter'] text-[17px] font-bold text-[#e0e2ea] leading-tight">
-              {journey.bus.name} · Route {journey.route.name}
-            </h4>
-            <div className="font-['Inter'] text-xs text-[#c0c7d4] mt-0.5">{journey.route.description}</div>
-          </div>
-        </div>
-
-        {/* Distance & Findings Summary */}
-        <div className="bg-[#181c21] rounded-lg p-3 mb-3 border border-[#414752]/50">
-          <div className="flex justify-between items-center mb-2.5 pb-2 border-b border-[#414752]/40">
-            <span className="font-['Inter'] text-[10px] font-bold text-[#c0c7d4] tracking-wider uppercase">TRIP METRICS</span>
-            <span className="font-['JetBrains_Mono'] text-[12px] text-[#e0e2ea] font-bold">{journey.route.distance_km} km / 33 min</span>
-          </div>
-
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-xs">
-              <span className="flex items-center gap-1.5 text-[#c0c7d4]">
-                <span className="w-2 h-2 rounded-full bg-[#f87171]"></span>
-                <span className="font-['Inter'] font-medium">{defects} ROAD DEFECTS</span>
-              </span>
-            </div>
-            <div className="flex items-center justify-between text-xs">
-              <span className="flex items-center gap-1.5 text-[#c0c7d4]">
-                <span className="w-2 h-2 rounded-full bg-[#fbbf24]"></span>
-                <span className="font-['Inter'] font-medium">{traffic} TRAFFIC EVENTS</span>
-              </span>
-            </div>
-            <div className="flex items-center justify-between text-xs">
-              <span className="flex items-center gap-1.5 text-[#c0c7d4]">
-                <span className="w-2 h-2 rounded-full bg-[#c084fc]"></span>
-                <span className="font-['Inter'] font-medium">{safety} SAFETY EVENTS</span>
-              </span>
-            </div>
-          </div>
-
-          <div className="mt-2.5 pt-2 border-t border-[#414752]/40 flex justify-between items-center">
-            <span className="font-['Inter'] text-[10px] font-bold text-[#8b919d] uppercase">ACCUMULATION</span>
-            <span className="font-['JetBrains_Mono'] text-[13px] font-bold text-[#38bdf8]">
-              {totalFindings} TOTAL FINDINGS
-            </span>
-          </div>
-        </div>
-
-        {/* Action Button */}
-        <button
-          onClick={() => navigate(`/live-map?journey=${journey.id}`)}
-          className="w-full bg-[#38bdf8] hover:bg-[#58a6ff] text-[#00315c] font-bold font-['Inter'] text-[11px] tracking-wider uppercase py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2 shadow-md cursor-pointer"
-        >
-          <span className="material-symbols-outlined text-[17px]">analytics</span>
-          REVIEW REPORT
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div
       onClick={onSelect}
-      className="block bg-[#101419] p-3.5 rounded-xl border border-[#414752] opacity-80 hover:opacity-100 hover:border-[#38bdf8]/40 transition-all cursor-pointer relative"
+      className={`p-3 rounded-lg border transition-all duration-150 cursor-pointer ${
+        isPrimary
+          ? 'bg-[var(--surface)] border-[var(--accent)] shadow-xs'
+          : 'bg-[var(--surface)] border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
+      }`}
     >
       <div className="flex items-center justify-between mb-2">
-        <span className="font-['JetBrains_Mono'] text-[10px] font-bold text-[#cbd5e1] uppercase">
-          ● GENERATED
-        </span>
-        <span className="text-[#8b919d] font-['JetBrains_Mono'] text-[10px]">{timeLabel}</span>
+        <StatusDot status="success" label="Report generated" />
+        <span className="text-[11px] font-mono text-[var(--text-muted)]">{timeLabel}</span>
       </div>
-      <div className="flex items-start mb-2">
-        <div className="w-8 h-8 rounded bg-[#32353b] flex items-center justify-center mr-2.5 shrink-0 border border-[#414752]">
-          <span className="material-symbols-outlined text-[#c0c7d4] text-[16px]">directions_bus</span>
-        </div>
+
+      <div className="flex items-start justify-between gap-2 mb-2">
         <div>
-          <h4 className="font-['Inter'] text-[14px] font-bold text-[#e0e2ea]">{journey.bus.name} • Route {journey.route.name}</h4>
-          <div className="font-['Inter'] text-[11px] text-[#c0c7d4]">{journey.route.description}</div>
+          <h4 className="text-xs font-semibold text-[var(--text-primary)]">
+            {journey.bus.name} · Route {journey.route.name}
+          </h4>
+          <p className="text-[11px] text-[var(--text-muted)] mt-0.5 truncate max-w-[240px]">
+            {journey.route.description}
+          </p>
         </div>
+        <span className="text-[11px] font-mono text-[var(--text-secondary)] whitespace-nowrap">
+          {journey.route.distance_km} km
+        </span>
       </div>
-      <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#414752]/40 text-xs">
-        <span className="font-['JetBrains_Mono'] text-[#c0c7d4]">{journey.route.distance_km} km</span>
-        <span className="font-['JetBrains_Mono'] text-[#38bdf8] font-bold">{totalFindings} Findings</span>
+
+      <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)] pt-2 border-t border-[var(--border-subtle)]">
+        <span>
+          <strong className="font-mono text-[var(--text-primary)]">{defects}</strong> defects ·{' '}
+          <strong className="font-mono text-[var(--text-primary)]">{totalFindings}</strong> findings
+        </span>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            navigate(`/live-map?journey=${journey.id}`);
+          }}
+          className="text-xs font-medium text-[var(--accent)] hover:underline inline-flex items-center gap-1 cursor-pointer"
+        >
+          Review
+          <ArrowRight className="w-3 h-3" />
+        </button>
       </div>
     </div>
   );
@@ -271,145 +248,114 @@ export function CommandCenter() {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const markersRef = useRef<Marker[]>([]);
+  const busMarkerRef = useRef<Marker | null>(null);
+
   const [mapReady, setMapReady] = useState(false);
+  const [mapTheme, setMapTheme] = useState<MapTheme>('default');
   const [selectedRouteId, setSelectedRouteId] = useState<number | null>(null);
   const [selectedJourney, setSelectedJourney] = useState<Journey | null>(null);
-  const busMarkerRef = useRef<Marker | null>(null);
-  const [workOrderData, setWorkOrderData] = useState<WorkOrderData | null>(null);
   const [isWorkOrderOpen, setIsWorkOrderOpen] = useState(false);
-  const [mapTheme, setMapTheme] = useState<MapTheme>('default');
+  const [workOrderData, setWorkOrderData] = useState<WorkOrderData | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
   const { isConnected } = useLiveStream();
 
-  // Switch between Google-style default and satellite basemap (overlays are preserved)
+  const {
+    data: summary,
+    isLoading: summaryLoading,
+    error: summaryError,
+    refetch: refetchSummary,
+  } = useQuery({
+    queryKey: ['analytics-summary'],
+    queryFn: fetchAnalyticsSummary,
+  });
+
+  const {
+    data: journeys,
+    isLoading: journeysLoading,
+    error: journeysError,
+    refetch: refetchJourneys,
+  } = useQuery({
+    queryKey: ['journeys'],
+    queryFn: fetchJourneys,
+  });
+
+  const { data: routes } = useQuery({
+    queryKey: ['routes'],
+    queryFn: fetchRoutes,
+  });
+
+  const safeSummary: AnalyticsSummary = summary || MOCK_ANALYTICS_SUMMARY;
+  const safeJourneys: Journey[] = journeys && journeys.length > 0 ? journeys : MOCK_JOURNEYS;
+  const safeRoutes = routes && routes.length > 0 ? routes : MOCK_ROUTES;
+
+  const setMapContainer = (node: HTMLDivElement | null) => {
+    mapContainerRef.current = node;
+  };
+
+  // Initialize MapLibre
+  useEffect(() => {
+    if (!mapContainerRef.current || mapRef.current) return;
+
+    try {
+      const map = new MapLibreMap({
+        container: mapContainerRef.current,
+        style: MAP_STYLE as any,
+        center: RAIPUR_CENTER,
+        zoom: 12.8,
+        minZoom: 10,
+        maxZoom: 18,
+        attributionControl: false,
+      });
+
+      map.addControl(new NavigationControl({ showCompass: false }), 'bottom-right');
+
+      map.on('load', () => {
+        setMapReady(true);
+        map.resize();
+      });
+
+      mapRef.current = map;
+    } catch (e) {
+      console.error('Failed to initialize MapLibre map on CC:', e);
+    }
+
+    return () => {
+      markersRef.current.forEach((m) => m.remove());
+      markersRef.current = [];
+      if (busMarkerRef.current) {
+        busMarkerRef.current.remove();
+        busMarkerRef.current = null;
+      }
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
+    };
+  }, []);
+
+  // Sync Map Theme (Default road map / Satellite)
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
     applyMapTheme(map, mapTheme);
   }, [mapTheme, mapReady]);
 
-  const { data: summary = MOCK_ANALYTICS_SUMMARY, isLoading: summaryLoading, error: summaryError, refetch: refetchSummary } = useQuery({
-    queryKey: ['analytics-summary'],
-    queryFn: fetchAnalyticsSummary,
-    initialData: MOCK_ANALYTICS_SUMMARY,
-    staleTime: 0,
-    refetchOnMount: 'always',
-    refetchInterval: 10_000,
-  });
-
-  const { data: journeys = MOCK_JOURNEYS, isLoading: journeysLoading, error: journeysError, refetch: refetchJourneys } = useQuery({
-    queryKey: ['journeys'],
-    queryFn: fetchJourneys,
-    initialData: MOCK_JOURNEYS,
-    staleTime: 0,
-    refetchOnMount: 'always',
-    refetchInterval: 10_000,
-  });
-
-  const { data: routes = MOCK_ROUTES } = useQuery({
-    queryKey: ['routes'],
-    queryFn: fetchRoutes,
-    initialData: MOCK_ROUTES,
-  });
-
-  const safeSummary: AnalyticsSummary = (summary && typeof summary === 'object' && !Array.isArray(summary) && 'active_buses' in summary)
-    ? summary
-    : MOCK_ANALYTICS_SUMMARY;
-
-  const safeJourneys: Journey[] = Array.isArray(journeys) ? journeys : MOCK_JOURNEYS;
-  const safeRoutes: typeof MOCK_ROUTES = Array.isArray(routes) ? routes : MOCK_ROUTES;
-
-  // Callback ref for mounting
-  const setMapContainer = useCallback((node: HTMLDivElement | null) => {
-    if (node && !mapRef.current) {
-      mapContainerRef.current = node;
-      try {
-        const map = new MapLibreMap({
-          container: node,
-          style: MAP_STYLE,
-          center: RAIPUR_CENTER,
-          zoom: 12.5,
-        });
-
-        map.addControl(new NavigationControl({ showCompass: false }), 'bottom-left');
-        map.on('load', () => setMapReady(true));
-        map.on('styledata', () => {
-          if (map.isStyleLoaded()) {
-            setMapReady(true);
-          }
-        });
-        if (map.isStyleLoaded()) {
-          setMapReady(true);
-        }
-        mapRef.current = map;
-        (window as any).flintMap = map;
-      } catch (e) {
-        console.error("Map init error:", e);
-      }
-    }
-  }, []);
-
-  // Cleanup map instance on component unmount
-  useEffect(() => {
-    return () => {
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
-        setMapReady(false);
-      }
-    };
-  }, []);
-
-  // Listen for real-time bus telemetry to move bus marker smoothly along R3
+  // Real-time bus telemetry updates
   useEffect(() => {
     const handleBusTelemetry = (e: any) => {
-      const coords = e.detail?.coordinates;
-      const map = mapRef.current;
-      if (!coords || !map) return;
-      map.triggerRepaint();
-
-      if (busMarkerRef.current) {
-        busMarkerRef.current.setLngLat(coords);
-      } else {
-        const busEl = document.createElement('div');
-        busEl.style.cssText = 'width:32px;height:32px;border-radius:8px;background:#0f172a;border:2px solid #38bdf8;display:flex;align-items:center;justify-content:center;box-shadow:0 0 16px rgba(56,189,248,0.7);cursor:pointer;z-index:50';
-        busEl.innerHTML = `<span class="material-symbols-outlined animate-pulse" style="font-size:20px;color:#38bdf8">directions_bus</span>`;
-        const marker = new Marker({ element: busEl })
-          .setLngLat(coords)
-          .addTo(map);
-        busMarkerRef.current = marker;
+      const { coordinates } = e.detail;
+      if (!coordinates || !busMarkerRef.current) return;
+      busMarkerRef.current.setLngLat([coordinates[0], coordinates[1]]);
+      if (mapRef.current) {
+        mapRef.current.easeTo({ center: [coordinates[0], coordinates[1]], duration: 800 });
       }
     };
     window.addEventListener('flint:bus-telemetry', handleBusTelemetry);
     return () => window.removeEventListener('flint:bus-telemetry', handleBusTelemetry);
   }, [mapReady]);
 
-  // Listen for dynamic field survey routes and auto-fit bounds
-  useEffect(() => {
-    const handleNewSurveyRoute = (e: any) => {
-      const route = e.detail;
-      const map = mapRef.current;
-      if (!map || !route || !route.geojson_path) return;
-
-      try {
-        const coords = typeof route.geojson_path === 'string' ? JSON.parse(route.geojson_path) : route.geojson_path;
-        if (coords && coords.length > 1) {
-          const bounds = coords.reduce(
-            (b: any, coord: [number, number]) => b.extend(coord),
-            new LngLatBounds(coords[0], coords[0])
-          );
-          map.resize();
-          map.fitBounds(bounds, { padding: 40, maxZoom: 15, duration: 1800 });
-        }
-      } catch (err) {
-        console.error('Failed to fit bounds to survey route:', err);
-      }
-    };
-
-    window.addEventListener('flint:new-survey-route', handleNewSurveyRoute);
-    return () => window.removeEventListener('flint:new-survey-route', handleNewSurveyRoute);
-  }, []);
-
-  // Auto-focus on primary route/journey on reload/mount
+  // Auto-focus primary route on mount
   const hasAutoFittedRef = useRef<boolean>(false);
   useEffect(() => {
     const map = mapRef.current;
@@ -420,7 +366,10 @@ export function CommandCenter() {
     let coords: [number, number][] = [];
     if (targetRoute?.geojson_path) {
       try {
-        coords = typeof targetRoute.geojson_path === 'string' ? JSON.parse(targetRoute.geojson_path) : targetRoute.geojson_path;
+        coords =
+          typeof targetRoute.geojson_path === 'string'
+            ? JSON.parse(targetRoute.geojson_path)
+            : targetRoute.geojson_path;
       } catch {
         coords = RAW_ROUTE_COORDS;
       }
@@ -431,25 +380,20 @@ export function CommandCenter() {
       const fitCamera = () => {
         const m = mapRef.current;
         if (!m) return;
-        const container = m.getContainer();
-        if (!container || container.clientWidth < 50 || container.clientHeight < 50) {
-          window.setTimeout(fitCamera, 150);
-          return;
-        }
         try {
           m.resize();
           const bounds = coords.reduce(
             (b: any, coord: [number, number]) => b.extend(coord),
             new LngLatBounds(coords[0], coords[0])
           );
-          m.fitBounds(bounds, { padding: 40, maxZoom: 15, duration: 1200 });
+          m.fitBounds(bounds, { padding: 50, maxZoom: 15, duration: 1200 });
           hasAutoFittedRef.current = true;
           setSelectedRouteId(targetRoute?.id || 1);
           if (primaryJourney) {
             setSelectedJourney(primaryJourney);
           }
         } catch (err) {
-          console.error('Failed to auto-focus primary route on CC:', err);
+          console.error('Failed to auto-focus route:', err);
         }
       };
 
@@ -458,7 +402,7 @@ export function CommandCenter() {
     }
   }, [mapReady, safeRoutes, safeJourneys]);
 
-  // Listen for window resize / sidebar toggle
+  // Window resize handler
   useEffect(() => {
     const handleResize = () => {
       if (mapRef.current) {
@@ -469,18 +413,15 @@ export function CommandCenter() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Render Guaranteed Route Lines (Baseline Corridor + Google Maps Traffic-Style Road Conditions)
+  // Render Route Lines
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady || !safeRoutes || safeRoutes.length === 0) return;
 
-    const allDetections = safeJourneys.flatMap(j => j.detections || []);
+    const allDetections = safeJourneys.flatMap((j) => j.detections || []);
 
-    // Defer layer creation to ensure WebGL context is fully ready after raster tile init
     const renderLayers = () => {
-      const m = mapRef.current;
-      if (!m) return;
-      safeRoutes.forEach(route => {
+      safeRoutes.forEach((route) => {
         const baseSourceId = `cc-base-src-${route.id}`;
         const baseCasingLayerId = `cc-base-casing-${route.id}`;
         const baseCoreLayerId = `cc-base-core-${route.id}`;
@@ -491,24 +432,20 @@ export function CommandCenter() {
         const primaryRouteId = safeRoutes?.[0]?.id || 1;
         const isActiveCorridor = isSelected || (!selectedRouteId && route.id === primaryRouteId);
 
-        // Safely extract coordinates from either stringified or array representation
         let coords: [number, number][] = [];
         if (typeof route.geojson_path === 'string') {
           try {
             coords = JSON.parse(route.geojson_path);
           } catch (e) {
-            console.error(`Error parsing geojson_path for route ${route.name}:`, e);
+            console.error(`Error parsing geojson_path:`, e);
           }
         } else if (Array.isArray(route.geojson_path)) {
           coords = route.geojson_path as any;
         }
 
         if (!coords || !Array.isArray(coords) || coords.length < 2) coords = RAW_ROUTE_COORDS;
-        if (!coords || !Array.isArray(coords) || coords.length < 2) {
-          return;
-        }
+        if (!coords || !Array.isArray(coords) || coords.length < 2) return;
 
-        // 1. BASELINE UNBROKEN ROUTE CORRIDOR (Guarantees visible highway line at all times)
         const baseFeatureCollection = {
           type: 'FeatureCollection' as const,
           features: [
@@ -530,14 +467,18 @@ export function CommandCenter() {
               type: 'geojson',
               data: baseFeatureCollection,
             });
-          } catch (e) { console.warn('[FLINT Map] Layer operation skipped:', e); }
+          } catch (e) {
+            console.warn('[FLINT Map] Layer op skipped:', e);
+          }
         } else {
           try {
             existingBaseSource.setData(baseFeatureCollection);
-          } catch (e) { console.warn('[FLINT Map] Layer operation skipped:', e); }
+          } catch (e) {
+            console.warn('[FLINT Map] Layer op skipped:', e);
+          }
         }
 
-        // Base Casing Layer (Dark underlay so line pops over both light map & satellite tiles)
+        // Base Casing Layer
         if (!map.getLayer(baseCasingLayerId)) {
           try {
             map.addLayer({
@@ -545,21 +486,18 @@ export function CommandCenter() {
               type: 'line',
               source: baseSourceId,
               paint: {
-                'line-color': '#0f172a',
-                'line-width': isSelected ? 9.5 : (isActiveCorridor ? 8.0 : 6.0),
-                'line-opacity': 0.85,
+                'line-color': '#0F172A',
+                'line-width': isSelected ? 8.0 : isActiveCorridor ? 6.5 : 5.0,
+                'line-opacity': 0.8,
               },
-              layout: {
-                'line-cap': 'round',
-                'line-join': 'round',
-              },
+              layout: { 'line-cap': 'round', 'line-join': 'round' },
             });
-          } catch (e) { console.warn('[FLINT Map] Layer operation skipped:', e); }
-        } else {
-          map.setPaintProperty(baseCasingLayerId, 'line-width', isSelected ? 9.5 : (isActiveCorridor ? 8.0 : 6.0));
+          } catch (e) {
+            console.warn('[FLINT Map] Layer op skipped:', e);
+          }
         }
 
-        // Base Highway Core Layer (High-contrast cyan corridor)
+        // Base Highway Core Layer
         if (!map.getLayer(baseCoreLayerId)) {
           try {
             map.addLayer({
@@ -567,39 +505,41 @@ export function CommandCenter() {
               type: 'line',
               source: baseSourceId,
               paint: {
-                'line-color': '#0284c7',
-                'line-width': isSelected ? 7.0 : (isActiveCorridor ? 5.5 : 4.0),
-                'line-opacity': 0.9,
+                'line-color': '#4C8DFF',
+                'line-width': isSelected ? 5.5 : isActiveCorridor ? 4.0 : 3.0,
+                'line-opacity': 0.85,
               },
-              layout: {
-                'line-cap': 'round',
-                'line-join': 'round',
-              },
+              layout: { 'line-cap': 'round', 'line-join': 'round' },
             });
-          } catch (e) { console.warn('[FLINT Map] Layer operation skipped:', e); }
-        } else {
-          map.setPaintProperty(baseCoreLayerId, 'line-width', isSelected ? 7.0 : (isActiveCorridor ? 5.5 : 4.0));
+          } catch (e) {
+            console.warn('[FLINT Map] Layer op skipped:', e);
+          }
         }
 
-        // 2. GOOGLE MAPS TRAFFIC / DEFECT SEGMENTS (Green -> Orange -> Red -> Burgundy)
-        const routeDets = safeJourneys.filter(j => j.route_id === route.id).flatMap(j => j.detections || []);
-        const trafficSegments = computePotholeTrafficSegments(coords, routeDets.length > 0 ? routeDets : allDetections, 60);
+        // Traffic segments
+        const routeDetections = allDetections.filter(
+          (d) =>
+            safeJourneys.find((j) => j.id === d.journey_id)?.route_id === route.id ||
+            route.id === 1
+        );
+        const segments = computePotholeTrafficSegments(coords, routeDetections, 60);
+
+        const trafficFeatures = segments.map((seg) => ({
+          type: 'Feature' as const,
+          properties: {
+            color: seg.color,
+            potholeCount: seg.potholeCount,
+            statusLabel: seg.statusLabel,
+          },
+          geometry: {
+            type: 'LineString' as const,
+            coordinates: seg.coordinates,
+          },
+        }));
 
         const trafficFeatureCollection = {
           type: 'FeatureCollection' as const,
-          features: trafficSegments.map(seg => ({
-            type: 'Feature' as const,
-            properties: {
-              color: seg.color,
-              potholeCount: seg.potholeCount,
-              statusLabel: seg.statusLabel,
-              routeId: route.id,
-            },
-            geometry: {
-              type: 'LineString' as const,
-              coordinates: seg.coordinates,
-            },
-          })),
+          features: trafficFeatures,
         };
 
         const existingTrafficSource = map.getSource(trafficSourceId) as any;
@@ -609,20 +549,16 @@ export function CommandCenter() {
               type: 'geojson',
               data: trafficFeatureCollection,
             });
-          } catch (e) { console.warn('[FLINT Map] Layer operation skipped:', e); }
+          } catch (e) {
+            console.warn('[FLINT Map] Layer op skipped:', e);
+          }
         } else {
           try {
             existingTrafficSource.setData(trafficFeatureCollection);
-          } catch (e) { console.warn('[FLINT Map] Layer operation skipped:', e); }
+          } catch (e) {
+            console.warn('[FLINT Map] Layer op skipped:', e);
+          }
         }
-
-        // Dynamic Traffic Heatmap Line Layer with compiled to-color expression
-        const colorExpression: any = [
-          'case',
-          ['has', 'color'],
-          ['to-color', ['get', 'color']],
-          ['to-color', '#22c55e']
-        ];
 
         if (!map.getLayer(trafficLineLayerId)) {
           try {
@@ -631,25 +567,18 @@ export function CommandCenter() {
               type: 'line',
               source: trafficSourceId,
               paint: {
-                'line-color': colorExpression,
-                'line-width': isSelected ? 6.5 : (isActiveCorridor ? 5.0 : 3.5),
-                'line-opacity': 1.0,
+                'line-color': ['get', 'color'],
+                'line-width': isSelected ? 5.5 : isActiveCorridor ? 4.0 : 3.0,
+                'line-opacity': 0.9,
               },
-              layout: {
-                'line-cap': 'round',
-                'line-join': 'round',
-              },
+              layout: { 'line-cap': 'round', 'line-join': 'round' },
             });
           } catch (e) {
-            console.error(`Error adding traffic line layer ${trafficLineLayerId}:`, e);
+            console.warn('[FLINT Map] Layer op skipped:', e);
           }
-        } else {
-          map.setPaintProperty(trafficLineLayerId, 'line-color', colorExpression);
-          map.setPaintProperty(trafficLineLayerId, 'line-width', isSelected ? 6.5 : (isActiveCorridor ? 5.0 : 3.5));
-          map.setPaintProperty(trafficLineLayerId, 'line-opacity', 1.0);
         }
 
-        // 3. 30px Wide Click Hitbox Layer
+        // Hitbox Layer
         if (!map.getLayer(hitboxLayerId)) {
           try {
             map.addLayer({
@@ -658,15 +587,20 @@ export function CommandCenter() {
               source: baseSourceId,
               paint: {
                 'line-color': '#000000',
-                'line-width': 30,
+                'line-width': 28,
                 'line-opacity': 0.001,
               },
             });
 
             const handleRouteSelect = () => {
               setSelectedRouteId(route.id);
-              const matchingJourneys = safeJourneys.filter(j => j.route_id === route.id);
-              const j = matchingJourneys.sort((a, b) => (b.detections?.length || 0) - (a.detections?.length || 0))[0] || safeJourneys[0] || null;
+              const matchingJourneys = safeJourneys.filter((j) => j.route_id === route.id);
+              const j =
+                matchingJourneys.sort(
+                  (a, b) => (b.detections?.length || 0) - (a.detections?.length || 0)
+                )[0] ||
+                safeJourneys[0] ||
+                null;
               setSelectedJourney(j);
               if (j && j.detections && j.detections.length > 0) {
                 const det = j.detections[0];
@@ -688,56 +622,46 @@ export function CommandCenter() {
             };
 
             map.on('click', hitboxLayerId, handleRouteSelect);
-            map.on('click', baseCoreLayerId, handleRouteSelect);
-            map.on('click', trafficLineLayerId, handleRouteSelect);
             map.on('mouseenter', hitboxLayerId, () => {
               map.getCanvas().style.cursor = 'pointer';
             });
             map.on('mouseleave', hitboxLayerId, () => {
               map.getCanvas().style.cursor = '';
             });
-          } catch (e) { console.warn('[FLINT Map] Layer operation skipped:', e); }
+          } catch (e) {
+            console.warn('[FLINT Map] Layer op skipped:', e);
+          }
         }
       });
-      m.triggerRepaint();
+      map.triggerRepaint();
     };
 
-    // Schedule: try immediately, and retry with backoff + on idle to handle raster basemap race conditions
     renderLayers();
-    map.triggerRepaint();
-    const t1 = window.setTimeout(() => { renderLayers(); map.triggerRepaint(); }, 200);
-    const t2 = window.setTimeout(() => { renderLayers(); map.triggerRepaint(); }, 600);
-    const t3 = window.setTimeout(() => { renderLayers(); map.triggerRepaint(); }, 1500);
-    const idleHandler = () => { renderLayers(); map.triggerRepaint(); };
-    map.on('idle', idleHandler);
-    return () => {
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
-      window.clearTimeout(t3);
-      map.off('idle', idleHandler);
-    };
+    const t = window.setTimeout(renderLayers, 200);
+    return () => window.clearTimeout(t);
   }, [mapReady, mapTheme, safeRoutes, selectedRouteId, safeJourneys]);
 
-  // Render ONLY Active Bus Marker (Red round circular pothole markers completely removed)
+  // Render Active Bus Marker
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady || !safeJourneys) return;
 
-    markersRef.current.forEach(m => m.remove());
+    markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
 
-    // Active Bus Marker on Primary Journey
-    const activeJourney = safeJourneys.find(j => j.status === 'ACTIVE') || safeJourneys[0];
+    const activeJourney = safeJourneys.find((j) => j.status === 'ACTIVE') || safeJourneys[0];
     if (activeJourney && activeJourney.bus?.last_lon && activeJourney.bus?.last_lat) {
       const busName = activeJourney.bus.name || 'BUS-01';
       const busEl = document.createElement('div');
-      busEl.className = 'flex flex-col items-center cursor-pointer group z-30';
+      busEl.className = 'flex flex-col items-center cursor-pointer group z-30 select-none';
       busEl.innerHTML = `
-        <div class="w-7 h-7 rounded-lg bg-[#0f172a] border-2 border-[#38bdf8] flex items-center justify-center shadow-lg relative">
-          <span class="material-symbols-outlined text-[16px] text-[#38bdf8]">directions_bus</span>
-          <span class="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[#38bdf8] animate-pulse-ring"></span>
+        <div class="w-6 h-6 rounded-md bg-[var(--surface)] border border-[var(--border-strong)] flex items-center justify-center shadow-md relative">
+          <svg class="w-3.5 h-3.5 text-[var(--accent)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M8 6v6M15 6v6M2 12h19.6M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.6-.3-1.1-.8-1.4-.4-.2-1-.3-1.6-.3H4.4c-.6 0-1.2.1-1.6.3-.5.3-.8.8-.8 1.4 0 .4.1.8.2 1.2L3 18h3m12 0a2 2 0 1 1-4 0m-8 0a2 2 0 1 1-4 0"/>
+          </svg>
+          <span class="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[#34D399] animate-bus-pulse"></span>
         </div>
-        <div class="mt-0.5 bg-[#0b0e14]/95 border border-[#38bdf8]/50 rounded px-1.5 py-0.5 text-[9px] font-['JetBrains_Mono'] text-[#38bdf8] font-bold shadow-md">
+        <div class="mt-0.5 bg-[var(--surface)] border border-[var(--border-subtle)] rounded px-1.5 py-0.2 text-[10px] font-mono text-[var(--text-primary)] font-medium shadow-xs">
           ${busName}
         </div>
       `;
@@ -755,157 +679,208 @@ export function CommandCenter() {
     }
   }, [mapReady, safeJourneys]);
 
-  if (summaryError && !safeSummary) return <ErrorState message="FLINT API connection unavailable." onRetry={() => refetchSummary()} />;
-  if (journeysError && safeJourneys.length === 0) return <ErrorState message="Could not load journey data." onRetry={() => refetchJourneys()} />;
+  if (summaryError && !safeSummary) {
+    return (
+      <ErrorState
+        message="Platform telemetry service unavailable."
+        onRetry={() => refetchSummary()}
+      />
+    );
+  }
+  if (journeysError && safeJourneys.length === 0) {
+    return (
+      <ErrorState
+        message="Could not load corridor route data."
+        onRetry={() => refetchJourneys()}
+      />
+    );
+  }
 
-  const completedJourneys = safeJourneys.filter(j => j.status === 'COMPLETED');
+  const completedJourneys = safeJourneys.filter((j) => j.status === 'COMPLETED');
 
   return (
-    <div className="flex flex-col h-full">
-      <KPIStrip summary={safeSummary} isConnected={isConnected} />
+    <div className="w-full h-full relative overflow-hidden bg-[var(--bg-base)]">
+      {/* Full-Bleed Map Canvas */}
+      <div ref={setMapContainer} className="absolute inset-0 w-full h-full" />
 
-      <div className="flex-1 flex overflow-hidden">
-        {/* Real Raipur Map Area */}
-        <div className="flex-1 relative bg-[#0a0f16]">
-          {summaryLoading && (
-            <div className="absolute inset-0 z-20 bg-[#0a0f16]/60 flex items-center justify-center">
-              <LoadingState message="Loading Command Center GIS..." />
-            </div>
-          )}
-          <div ref={setMapContainer} className="absolute inset-0 w-full h-full" />
+      {summaryLoading && (
+        <div className="absolute inset-0 z-20 bg-[var(--bg-base)]/50 backdrop-blur-xs flex items-center justify-center">
+          <LoadingState message="Connecting geographic sensor network..." />
+        </div>
+      )}
 
-          {/* Map Controls (top-center): Default/Satellite */}
-          <div
-            id="map-theme-toggle"
-            className="absolute top-3 left-1/2 -translate-x-1/2 z-20 pointer-events-auto flex items-center gap-1.5 bg-white/95 backdrop-blur-md border border-slate-300 rounded-xl p-1 shadow-lg"
-          >
-            {([
-              { key: 'default', label: 'Default', icon: 'map' },
-              { key: 'satellite', label: 'Satellite', icon: 'satellite_alt' },
-            ] as { key: MapTheme; label: string; icon: string }[]).map(opt => (
-              <button
-                key={opt.key}
-                id={`map-theme-${opt.key}`}
-                onClick={() => setMapTheme(opt.key)}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-['Inter'] text-[12px] font-semibold transition-all cursor-pointer ${
-                  mapTheme === opt.key
-                    ? 'bg-[#0e7490] text-white shadow-md'
-                    : 'text-slate-700 hover:bg-slate-100'
-                }`}
-              >
-                <span className="material-symbols-outlined text-[16px]">{opt.icon}</span>
-                {opt.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Map Legend Overlay: Road Conditions & Hazards */}
-          <div className="absolute top-3 left-3 bg-[#0f172a]/95 backdrop-blur-md border border-[#334155] rounded-xl p-3 shadow-xl min-w-[215px] pointer-events-auto z-10">
-            <div className="flex items-center justify-between border-b border-[#334155]/60 pb-1.5 mb-2">
-              <h4 className="font-['Inter'] text-[10px] font-bold text-[#cbd5e1] tracking-[0.05em] uppercase flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                ROAD CONDITIONS
-              </h4>
-              <span className="font-['JetBrains_Mono'] text-[9px] text-[#38bdf8] font-bold">LIVE GIS</span>
-            </div>
-            <ul className="space-y-1.5 text-xs font-['Inter']">
-              <li className="flex items-center justify-between text-[#e2e8f0]">
-                <div className="flex items-center">
-                  <div className="w-4 h-2 bg-[#22c55e] mr-2.5 rounded-sm shadow-[0_0_6px_rgba(34,197,94,0.6)]" />
-                  Smooth Road
-                </div>
-                <span className="font-['JetBrains_Mono'] text-[10px] text-emerald-400">Clear</span>
-              </li>
-              <li className="flex items-center justify-between text-[#e2e8f0]">
-                <div className="flex items-center">
-                  <div className="w-4 h-2 bg-[#ef4444] mr-2.5 rounded-sm shadow-[0_0_6px_rgba(239,68,68,0.6)]" />
-                  Potholes
-                </div>
-                <span className="font-['JetBrains_Mono'] text-[10px] text-red-400 font-semibold">Red</span>
-              </li>
-              <li className="flex items-center justify-between text-[#e2e8f0]">
-                <div className="flex items-center">
-                  <div className="w-4 h-2 bg-[#1d4ed8] mr-2.5 rounded-sm shadow-[0_0_6px_rgba(29,78,216,0.6)]" />
-                  Waterloggings
-                </div>
-                <span className="font-['JetBrains_Mono'] text-[10px] text-blue-400 font-semibold">Dark Blue</span>
-              </li>
-              <li className="flex items-center justify-between text-[#e2e8f0]">
-                <div className="flex items-center">
-                  <div className="w-4 h-2 bg-[#eab308] mr-2.5 rounded-sm shadow-[0_0_6px_rgba(234,179,8,0.6)]" />
-                  Traffic
-                </div>
-                <span className="font-['JetBrains_Mono'] text-[10px] text-yellow-400 font-semibold">Yellow</span>
-              </li>
-              <li className="flex items-center justify-between text-[#e2e8f0]">
-                <div className="flex items-center">
-                  <div className="w-4 h-2 bg-[#9333ea] mr-2.5 rounded-sm shadow-[0_0_6px_rgba(147,51,234,0.6)]" />
-                  Waterlogging + Potholes
-                </div>
-                <span className="font-['JetBrains_Mono'] text-[10px] text-purple-400 font-semibold">Purple</span>
-              </li>
-              <li className="flex items-center justify-between text-[#e2e8f0] pt-1.5 border-t border-[#334155]/60">
-                <div className="flex items-center">
-                  <span className="material-symbols-outlined text-[15px] text-[#38bdf8] mr-2 w-3.5 text-center">directions_bus</span>
-                  Active Bus ({safeJourneys?.[0]?.bus?.name || 'BUS-01'})
-                </div>
-                <span className="font-['JetBrains_Mono'] text-[10px] text-emerald-400 font-bold">ONLINE</span>
-              </li>
-            </ul>
-          </div>
-
-          {/* Interactive Route Context Overlay when Selected */}
-          {selectedJourney && (
-            <div className="absolute bottom-4 left-4 z-20">
-              <RouteIntelligenceOverlay
-                journey={selectedJourney}
-                onClose={() => {
-                  setSelectedJourney(null);
-                  setSelectedRouteId(null);
-                }}
-              />
-            </div>
-          )}
+      {/* Floating Top Controls Bar: Slim KPI Strip & Actions */}
+      <div className="absolute top-3 left-3 right-3 z-20 pointer-events-none flex items-center justify-between gap-3">
+        {/* Left: KPI Strip */}
+        <div className="pointer-events-auto">
+          <SlimKPIStrip summary={safeSummary} isConnected={isConnected} />
         </div>
 
-        {/* Route Reports Panel */}
-        <div className="w-[380px] bg-[#181c21] border-l border-[#414752] flex flex-col shrink-0">
-          <div className="px-4 py-3 border-b border-[#414752] flex justify-between items-center bg-[#101419]">
-            <h3 className="font-['Inter'] text-[14px] font-bold text-[#e0e2ea] flex items-center tracking-tight">
-              <span className="material-symbols-outlined mr-2 text-[#38bdf8] text-[18px]">route</span>
-              ROUTE REPORTS
-            </h3>
-            <span className="text-[10px] font-['JetBrains_Mono'] text-[#c0c7d4] bg-[#272a30] px-2 py-0.5 rounded border border-[#414752]">
-              {completedJourneys.length} REPORT
-            </span>
-          </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-3">
-            {journeysLoading ? (
-              <LoadingState message="Loading Route Reports..." />
-            ) : completedJourneys.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <span className="material-symbols-outlined text-[40px] text-[#414752] mb-3">route</span>
-                <h3 className="text-[#c0c7d4] font-semibold text-sm mb-0.5">NO ROUTE REPORTS</h3>
-                <p className="text-[#8b919d] text-xs">No completed journeys yet. Start a simulation.</p>
-              </div>
-            ) : (
-              completedJourneys.map((journey, i) => (
-                <RouteReportCard
-                  key={journey.id}
-                  journey={journey}
-                  isPrimary={i === 0}
-                  onSelect={() => {
-                    setSelectedRouteId(journey.route_id);
-                    setSelectedJourney(journey);
-                  }}
-                />
-              ))
-            )}
-          </div>
+        {/* Right: Map Theme & Route Drawer Toggle */}
+        <div className="pointer-events-auto flex items-center gap-2 ml-auto">
+          {/* Basemap Toggle (Default / Satellite) */}
+          <GlassPanel className="p-0.5 flex items-center gap-0.5">
+            <button
+              onClick={() => setMapTheme('default')}
+              title="Standard road view"
+              className={`h-7 px-2.5 rounded-md text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
+                mapTheme === 'default'
+                  ? 'bg-[var(--surface-raised)] text-[var(--text-primary)]'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <MapIcon className="w-3.5 h-3.5" strokeWidth={1.5} />
+              Roads
+            </button>
+            <button
+              onClick={() => setMapTheme('satellite')}
+              title="Satellite imagery"
+              className={`h-7 px-2.5 rounded-md text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
+                mapTheme === 'satellite'
+                  ? 'bg-[var(--surface-raised)] text-[var(--text-primary)]'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" strokeWidth={1.5} />
+              Satellite
+            </button>
+          </GlassPanel>
+
+          {/* Drawer Toggle */}
+          <GlassPanel className="p-0.5">
+            <button
+              onClick={() => setIsDrawerOpen((prev) => !prev)}
+              className={`h-7 px-2.5 rounded-md text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
+                isDrawerOpen
+                  ? 'bg-[var(--surface-raised)] text-[var(--accent)] font-semibold'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              {isDrawerOpen ? (
+                <PanelRightClose className="w-3.5 h-3.5" strokeWidth={1.5} />
+              ) : (
+                <PanelRightOpen className="w-3.5 h-3.5" strokeWidth={1.5} />
+              )}
+              Route reports
+              <span className="font-mono text-[10px] tabular-nums px-1.5 py-0.2 rounded-full bg-[var(--surface-raised)] text-[var(--text-secondary)]">
+                {completedJourneys.length}
+              </span>
+            </button>
+          </GlassPanel>
         </div>
       </div>
 
-      {/* Municipal PWD Work Order Modal */}
+      {/* Floating Bottom Left: Road Conditions Legend */}
+      <GlassPanel className="absolute bottom-4 left-4 z-10 p-3 min-w-[190px]">
+        <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-1.5 mb-2">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--text-muted)]">
+            Road conditions
+          </span>
+          <span className="text-[10px] font-mono text-[var(--accent)]">Live GIS</span>
+        </div>
+        <ul className="space-y-1.5 text-xs text-[var(--text-secondary)]">
+          <li className="flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <span className="w-3 h-1.5 rounded-xs bg-[#22c55e]" />
+              Smooth road
+            </span>
+            <span className="text-[11px] font-mono text-[var(--text-muted)]">Clear</span>
+          </li>
+          <li className="flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <span className="w-3 h-1.5 rounded-xs bg-[#ef4444]" />
+              Potholes
+            </span>
+            <span className="text-[11px] font-mono text-[#F0524F]">Urgent</span>
+          </li>
+          <li className="flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <span className="w-3 h-1.5 rounded-xs bg-[#1d4ed8]" />
+              Waterlogging
+            </span>
+            <span className="text-[11px] font-mono text-[#4C8DFF]">Tier 2</span>
+          </li>
+          <li className="flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <span className="w-3 h-1.5 rounded-xs bg-[#eab308]" />
+              Traffic slowdown
+            </span>
+            <span className="text-[11px] font-mono text-[#F59E0B]">Congestion</span>
+          </li>
+          <li className="flex items-center justify-between pt-1.5 border-t border-[var(--border-subtle)]">
+            <span className="flex items-center gap-1.5 text-[var(--text-primary)]">
+              <Bus className="w-3.5 h-3.5 text-[var(--accent)]" strokeWidth={1.5} />
+              Active bus
+            </span>
+            <StatusDot status="success" label="Online" />
+          </li>
+        </ul>
+      </GlassPanel>
+
+      {/* Floating Context Card when a Route is clicked */}
+      {selectedJourney && (
+        <div className="absolute bottom-4 left-60 z-20">
+          <RouteIntelligenceOverlay
+            journey={selectedJourney}
+            onClose={() => {
+              setSelectedJourney(null);
+              setSelectedRouteId(null);
+            }}
+          />
+        </div>
+      )}
+
+      {/* Collapsible Route Reports Right Drawer */}
+      <div
+        className={`absolute top-0 right-0 bottom-0 w-[360px] max-w-[90vw] z-30 bg-[var(--surface)] border-l border-[var(--border-subtle)] shadow-2xl flex flex-col transition-transform duration-150 ease-out ${
+          isDrawerOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        <div className="h-12 px-4 border-b border-[var(--border-subtle)] flex items-center justify-between bg-[var(--surface-raised)]/30 shrink-0">
+          <div className="flex items-center gap-2">
+            <RouteIcon className="w-4 h-4 text-[var(--accent)]" strokeWidth={1.5} />
+            <h3 className="text-xs font-semibold text-[var(--text-primary)]">
+              Route reports
+            </h3>
+            <span className="font-mono text-[10px] tabular-nums text-[var(--text-muted)] px-1.5 py-0.2 rounded bg-[var(--surface-raised)]">
+              {completedJourneys.length}
+            </span>
+          </div>
+          <button
+            onClick={() => setIsDrawerOpen(false)}
+            aria-label="Close drawer"
+            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] p-1 rounded hover:bg-[var(--surface-raised)] transition-colors cursor-pointer"
+          >
+            <X className="w-4 h-4" strokeWidth={1.5} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
+          {journeysLoading ? (
+            <LoadingState message="Loading reports..." />
+          ) : completedJourneys.length === 0 ? (
+            <EmptyState
+              icon={<RouteIcon className="w-6 h-6" strokeWidth={1.5} />}
+              title="No route reports"
+              description="Completed transit corridors and automated defect audits will appear here."
+            />
+          ) : (
+            completedJourneys.map((journey, i) => (
+              <RouteReportCard
+                key={journey.id}
+                journey={journey}
+                isPrimary={i === 0}
+                onSelect={() => {
+                  setSelectedRouteId(journey.route_id);
+                  setSelectedJourney(journey);
+                }}
+              />
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* Work Order Modal */}
       <WorkOrderModal
         isOpen={isWorkOrderOpen}
         onClose={() => setIsWorkOrderOpen(false)}

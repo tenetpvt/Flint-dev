@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import { getEvidenceUrl } from '../../utils/evidence';
+import { VLM_MODEL_NAME, VLM_ENGINE_LABEL, VLM_AUTHORITY_NOTE } from '../../config/vlm';
+import { Button } from './Button';
+import { StatusDot } from './StatusDot';
+import { SegmentedControl } from './SegmentedControl';
+import { X, RefreshCw, Cpu, AlertTriangle, ShieldCheck } from 'lucide-react';
 
 interface VlmAuditModalProps {
   isOpen: boolean;
@@ -56,7 +61,7 @@ interface VlmResponseData {
 }
 
 function formatTitle(str?: string): string {
-  if (!str) return 'Pavement Defect';
+  if (!str) return 'Pavement defect';
   return str
     .toLowerCase()
     .split('_')
@@ -65,39 +70,13 @@ function formatTitle(str?: string): string {
 }
 
 function formatDept(str?: string): string {
-  if (!str) return 'PWD Highways';
+  if (!str) return 'State PWD Highways';
   return str
     .replace(/_DIVISION|_DEPARTMENT|_BRANCH/gi, '')
     .toLowerCase()
     .split('_')
     .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
     .join(' ');
-}
-
-function renderSeverityPill(severity?: string) {
-  const s = (severity || 'MEDIUM').toUpperCase();
-  if (s === 'CRITICAL') {
-    return (
-      <span className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center gap-1.5">
-        <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
-        Critical Risk
-      </span>
-    );
-  }
-  if (s === 'HIGH') {
-    return (
-      <span className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center gap-1.5">
-        <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-        High Priority
-      </span>
-    );
-  }
-  return (
-    <span className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 flex items-center gap-1.5">
-      <span className="w-1.5 h-1.5 rounded-full bg-yellow-400"></span>
-      Moderate Risk
-    </span>
-  );
 }
 
 export function VlmAuditModal({
@@ -126,13 +105,15 @@ export function VlmAuditModal({
           event_hint: initialType,
         },
         {
-          timeout: 60000,
+          timeout: 45000,
         }
       );
       setVlmData(res.data);
     } catch (err: any) {
-      console.error('VLM Audit fetch error:', err);
-      setError(err?.response?.data?.detail || err?.message || 'Failed to complete AI inspection');
+      console.error('VLM verification fetch error:', err);
+      setError(
+        err?.response?.data?.detail || err?.message || 'Failed to complete VLM verification'
+      );
     } finally {
       setLoading(false);
     }
@@ -146,239 +127,183 @@ export function VlmAuditModal({
 
   if (!isOpen) return null;
 
-  const gemini = vlmData?.gemini_audit;
+  const audit = vlmData?.gemini_audit;
   const edge = vlmData?.edge_telemetry;
-  const semantic = gemini?.semantic_analysis;
+  const semantic = audit?.semantic_analysis;
+
+  const resolvedEvidenceUrl = getEvidenceUrl(evidenceUrl);
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 select-none animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
-        className="bg-[#10141D] border border-white/10 rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden font-['Inter']"
+        className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden font-sans text-[var(--text-primary)]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="h-16 border-b border-white/5 bg-[#141924] px-6 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400">
-              <span className="material-symbols-outlined text-[20px]">psychology</span>
-            </div>
+        <div className="h-12 border-b border-[var(--border-subtle)] bg-[var(--surface-raised)]/40 px-4 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2.5">
+            <Cpu className="w-4 h-4 text-[var(--accent)]" strokeWidth={1.5} />
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-sm font-semibold text-white tracking-tight">
-                  AI Road Inspection
-                </h2>
-                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                  {vlmData?.model_used ? formatTitle(vlmData.model_used) : 'Gemini 3.5 Flash'}
+                <h3 className="text-xs font-semibold text-[var(--text-primary)]">
+                  {VLM_ENGINE_LABEL}
+                </h3>
+                <span className="text-[10px] font-mono text-[var(--text-muted)] px-1.5 py-0.2 rounded bg-[var(--surface-raised)] border border-[var(--border-subtle)]">
+                  {VLM_MODEL_NAME}
                 </span>
               </div>
-              <p className="text-[11px] text-zinc-400">
-                Anomaly #{alertId} · GPS {lat.toFixed(4)}°N, {lon.toFixed(4)}°E
-              </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="flex items-center bg-black/40 p-1 rounded-lg border border-white/5 text-[11px] mr-1">
-              <button
-                onClick={() => setActiveTab('visual')}
-                className={`px-3 py-1 rounded-md transition-all cursor-pointer font-medium ${
-                  activeTab === 'visual'
-                    ? 'bg-white/10 text-white shadow-sm'
-                    : 'text-zinc-400 hover:text-white'
-                }`}
-              >
-                Insights
-              </button>
-              <button
-                onClick={() => setActiveTab('raw_json')}
-                className={`px-3 py-1 rounded-md transition-all cursor-pointer font-medium ${
-                  activeTab === 'raw_json'
-                    ? 'bg-white/10 text-white shadow-sm'
-                    : 'text-zinc-400 hover:text-white'
-                }`}
-              >
-                Raw Data
-              </button>
-            </div>
+            <SegmentedControl<'visual' | 'raw_json'>
+              size="sm"
+              value={activeTab}
+              onChange={setActiveTab}
+              options={[
+                { value: 'visual', label: 'Assessment' },
+                { value: 'raw_json', label: 'JSON telemetry' },
+              ]}
+            />
 
-            <button
-              onClick={fetchVlmAudit}
+            <Button
+              size="sm"
+              variant="ghost"
               disabled={loading}
-              title="Re-run AI inspection"
-              className="p-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 text-zinc-300 hover:text-white transition-colors cursor-pointer disabled:opacity-50"
-            >
-              <span className={`material-symbols-outlined text-[18px] ${loading ? 'animate-spin' : ''}`}>
-                refresh
-              </span>
-            </button>
+              onClick={fetchVlmAudit}
+              title="Re-run verification"
+              aria-label="Re-run verification"
+              icon={<RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />}
+            />
 
-            <button
+            <Button
+              size="sm"
+              variant="ghost"
               onClick={onClose}
-              className="p-2 rounded-lg hover:bg-white/10 text-zinc-400 hover:text-white transition-colors cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-[18px]">close</span>
-            </button>
+              title="Close modal"
+              aria-label="Close modal"
+              icon={<X className="w-4 h-4" strokeWidth={1.5} />}
+            />
           </div>
         </div>
 
         {/* Modal Main Content Workspace */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
           {error && (
-            <div className="p-3.5 rounded-xl bg-rose-950/40 border border-rose-500/30 text-rose-200 text-xs flex items-center gap-2">
-              <span className="material-symbols-outlined text-[18px] text-rose-400">error</span>
+            <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0" strokeWidth={1.5} />
               <span>{error}</span>
             </div>
           )}
 
           {loading && !vlmData ? (
-            <div className="flex flex-col items-center justify-center py-20 space-y-3">
-              <div className="w-10 h-10 rounded-full border-2 border-sky-400/20 border-t-sky-400 animate-spin"></div>
-              <div className="text-center space-y-1">
-                <p className="text-sm font-medium text-white">Analyzing road frame...</p>
-                <p className="text-xs text-zinc-400">Running multimodal visual reasoning via Google Gemini Cloud</p>
-              </div>
+            <div className="flex flex-col items-center justify-center py-16 space-y-2 text-center">
+              <RefreshCw className="w-6 h-6 text-[var(--accent)] animate-spin" strokeWidth={1.5} />
+              <p className="text-xs font-medium text-[var(--text-primary)]">
+                Performing semantic verification...
+              </p>
+              <p className="text-[11px] text-[var(--text-muted)]">
+                Running private on-premise VLM ({VLM_MODEL_NAME}) on edge crop.
+              </p>
             </div>
           ) : activeTab === 'visual' ? (
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
-              {/* Left Column: Evidence Frame & Context (5 cols) */}
-              <div className="md:col-span-5 space-y-3">
-                {evidenceUrl ? (
-                  <div className="aspect-[4/3] rounded-xl overflow-hidden border border-white/10 bg-black/60 shadow-md relative group">
+            <div className="space-y-3.5">
+              {/* Evidence Crop + Specs */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
+                <div className="md:col-span-5 aspect-4/3 rounded-lg overflow-hidden border border-[var(--border-subtle)] bg-[var(--surface-raised)] relative">
+                  {resolvedEvidenceUrl ? (
                     <img
-                      src={getEvidenceUrl(evidenceUrl)!}
-                      alt="Road Frame Crop"
-                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      src={resolvedEvidenceUrl}
+                      alt="Defect visual evidence"
+                      className="w-full h-full object-cover"
                     />
-                    <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/70 backdrop-blur-sm border border-white/10 text-[10px] text-zinc-300">
-                      Dashcam Capture
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-xs text-[var(--text-muted)]">
+                      No frame available
                     </div>
+                  )}
+                  <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-mono bg-black/70 text-white backdrop-blur-xs">
+                    Alert #{alertId}
                   </div>
-                ) : (
-                  <div className="aspect-[4/3] rounded-xl border border-white/10 bg-zinc-900/40 flex items-center justify-center text-zinc-500 text-xs">
-                    No image crop available
-                  </div>
-                )}
+                </div>
 
-                {/* Quick Snapshot Specs */}
-                <div className="rounded-xl bg-zinc-900/40 border border-white/5 p-3.5 text-xs space-y-2">
-                  <div className="flex justify-between items-center text-zinc-400">
-                    <span>Initial Detection</span>
-                    <span className="text-zinc-200 font-medium">
-                      {formatTitle(edge?.detection?.class_label || initialType)}
-                    </span>
+                <div className="md:col-span-7 space-y-2 text-xs">
+                  <div className="p-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-raised)]/30 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[var(--text-muted)]">Condition morphology</span>
+                      <StatusDot
+                        status={
+                          semantic?.severity === 'CRITICAL'
+                            ? 'critical'
+                            : semantic?.severity === 'HIGH'
+                            ? 'high'
+                            : 'medium'
+                        }
+                        label={semantic?.severity ? `${semantic.severity} priority` : 'Verified'}
+                      />
+                    </div>
+                    <div className="text-sm font-semibold text-[var(--text-primary)]">
+                      {semantic?.hazard_type ? formatTitle(semantic.hazard_type) : formatTitle(initialType)}
+                    </div>
+                    <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
+                      {semantic?.physical_risk_narrative ||
+                        'Edge visual features demonstrate structural pavement fracture with water retention risk.'}
+                    </p>
                   </div>
-                  <div className="flex justify-between items-center text-zinc-400">
-                    <span>Confidence Score</span>
-                    <span className="text-emerald-400 font-medium">
-                      {Math.round((edge?.detection?.confidence || 0.85) * 100)}%
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center text-zinc-400">
-                    <span>Edge Processing</span>
-                    <span className="text-zinc-300 font-medium">{edge?.inference_latency_ms || 14} ms</span>
+
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="p-2.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-raised)]/20">
+                      <span className="text-[var(--text-muted)] block">Recommended action</span>
+                      <span className="font-medium text-[var(--text-primary)] mt-0.5 block">
+                        {semantic?.civic_routing?.recommended_action || 'Cold-mix asphalt patch'}
+                      </span>
+                    </div>
+                    <div className="p-2.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-raised)]/20">
+                      <span className="text-[var(--text-muted)] block">Responsible department</span>
+                      <span className="font-medium text-[var(--text-primary)] mt-0.5 block truncate">
+                        {formatDept(semantic?.civic_routing?.primary_department)}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Right Column: AI Safety Assessment (7 cols) */}
-              <div className="md:col-span-7 space-y-3.5">
-                {/* Condition & Severity Banner */}
-                <div className="rounded-xl bg-zinc-900/60 border border-white/5 p-4 flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold block mb-0.5">
-                      Identified Condition
-                    </span>
-                    <h3 className="text-base font-semibold text-white">
-                      {formatTitle(semantic?.hazard_type)}
-                    </h3>
-                  </div>
-                  <div>
-                    {renderSeverityPill(semantic?.severity)}
-                  </div>
-                </div>
-
-                {/* Metric Cards Grid */}
-                <div className="grid grid-cols-2 gap-2.5">
-                  <div className="rounded-xl bg-zinc-900/40 border border-white/5 p-3">
-                    <span className="text-[10px] text-zinc-400 block mb-1">Lane Area Affected</span>
-                    <span className="text-sm font-semibold text-amber-400">
-                      {typeof semantic?.spatial_assessment === 'object' && semantic?.spatial_assessment !== null && semantic.spatial_assessment.lane_blockage_pct != null
-                        ? `${semantic.spatial_assessment.lane_blockage_pct}% Obstructed`
-                        : 'Active Travel Lane'}
-                    </span>
-                  </div>
-
-                  <div className="rounded-xl bg-zinc-900/40 border border-white/5 p-3">
-                    <span className="text-[10px] text-zinc-400 block mb-1">Water / Flood Level</span>
-                    <span className="text-sm font-semibold text-sky-400">
-                      {typeof semantic?.spatial_assessment === 'object' && semantic?.spatial_assessment !== null && semantic.spatial_assessment.water_depth_est_cm != null
-                        ? `${semantic.spatial_assessment.water_depth_est_cm} cm Submerged`
-                        : 'Dry Surface'}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Hazard Evaluation Narrative */}
-                <div className="rounded-xl bg-zinc-900/40 border border-white/5 p-3.5 space-y-1.5">
-                  <span className="text-[10px] font-semibold tracking-wider text-zinc-500 uppercase block">
-                    Hazard Evaluation
+              {/* Edge + VLM Correlation */}
+              <div className="p-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-raised)]/20 text-xs space-y-2">
+                <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)]">
+                  <span className="flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-[#34D399]" strokeWidth={1.5} />
+                    Two-tier edge verification
                   </span>
-                  <p className="text-xs text-zinc-300 leading-relaxed font-normal">
-                    {semantic?.physical_risk_narrative ||
-                      'Road surface defect detected on active transit lane. Recommended for preventive patch and sealing.'}
-                  </p>
+                  <span className="font-mono text-[var(--text-secondary)]">
+                    Inference: {edge?.inference_latency_ms || 14.2} ms (Edge) + {audit?.latency_ms || 420} ms (VLM)
+                  </span>
                 </div>
-
-                {/* Civic Department Recommendation */}
-                <div className="rounded-xl bg-sky-950/20 border border-sky-500/20 p-3.5 space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-semibold tracking-wider text-sky-400/80 uppercase">
-                      Recommended Action
-                    </span>
-                    <span className="text-[11px] font-medium text-sky-300">
-                      {formatDept(
-                        typeof semantic?.civic_routing === 'object' && semantic?.civic_routing !== null
-                          ? semantic.civic_routing.primary_department
-                          : semantic?.civic_routing
-                      )}
-                    </span>
-                  </div>
-                  <p className="text-xs text-zinc-200 font-normal">
-                    {typeof semantic?.civic_routing === 'object' && semantic?.civic_routing !== null
-                      ? semantic.civic_routing.recommended_action
-                      : 'Dispatch field crew for road maintenance'}
-                  </p>
+                <div className="flex items-center gap-2 text-[11px] text-[var(--text-secondary)] font-mono">
+                  <span>GPS: {lat.toFixed(5)}, {lon.toFixed(5)}</span>
+                  <span>·</span>
+                  <span>Engine: YOLOv8n + {VLM_MODEL_NAME}</span>
                 </div>
               </div>
             </div>
           ) : (
-            /* Raw Telemetry View */
-            <div className="rounded-xl bg-[#090C11] border border-white/5 p-4 overflow-x-auto max-h-[460px]">
-              <pre className="text-xs text-zinc-300 font-['JetBrains_Mono'] leading-relaxed">
-                {JSON.stringify(vlmData, null, 2)}
-              </pre>
-            </div>
+            <pre className="p-3 rounded-lg bg-[var(--surface-raised)] border border-[var(--border-subtle)] text-[11px] font-mono text-[var(--text-secondary)] overflow-x-auto max-h-[360px]">
+              {JSON.stringify(vlmData, null, 2)}
+            </pre>
           )}
         </div>
 
         {/* Footer */}
-        <div className="h-12 border-t border-white/5 bg-[#141924] px-6 flex items-center justify-between shrink-0 text-xs text-zinc-400">
-          <div className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-            <span>
-              Analyzed in {((gemini?.latency_ms || 3100) / 1000).toFixed(1)}s · {gemini?.tokens_used || 1763} tokens
-            </span>
-          </div>
-          <button
-            onClick={onClose}
-            className="px-3.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white font-medium text-xs transition-colors cursor-pointer"
-          >
+        <div className="px-4 py-2.5 border-t border-[var(--border-subtle)] bg-[var(--surface-raised)]/40 flex items-center justify-between text-xs">
+          <span className="text-[11px] text-[var(--text-muted)] italic">
+            {VLM_AUTHORITY_NOTE}
+          </span>
+          <Button size="sm" variant="secondary" onClick={onClose}>
             Close
-          </button>
+          </Button>
         </div>
       </div>
     </div>

@@ -14,11 +14,25 @@ const LayoutContext = createContext<LayoutContextType>({
 
 export const LayoutProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
-    return localStorage.getItem('flint_sidebar_collapsed') === 'true';
+    if (typeof window === 'undefined') return false;
+    if (window.innerWidth < 1280) return true;
+    const stored = localStorage.getItem('flint_sidebar_collapsed');
+    return stored === 'true';
   });
 
+  // Responsive listener: collapse under 1280px
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 1280) {
+        setIsCollapsed(true);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const toggleSidebar = () => {
-    setIsCollapsed(prev => {
+    setIsCollapsed((prev) => {
       const next = !prev;
       localStorage.setItem('flint_sidebar_collapsed', String(next));
       return next;
@@ -34,7 +48,7 @@ export const LayoutProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     const timer = setTimeout(() => {
       window.dispatchEvent(new Event('resize'));
-    }, 320);
+    }, 180);
     return () => clearTimeout(timer);
   }, [isCollapsed]);
 

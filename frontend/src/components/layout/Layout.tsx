@@ -4,6 +4,9 @@ import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LayoutProvider, useLayout } from '../../context/LayoutContext';
+import { ThemeProvider } from '../../context/ThemeContext';
+import { AlertCircle, RefreshCw } from 'lucide-react';
+import { Button } from '../ui/Button';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -31,23 +34,27 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-[#0A0C10]">
-          <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-4 shadow-lg">
-            <span className="material-symbols-outlined text-[32px]">warning</span>
+        <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-[var(--bg-base)]">
+          <div className="w-10 h-10 rounded-lg bg-[var(--surface-raised)] border border-[var(--border-subtle)] flex items-center justify-center text-[var(--text-secondary)] mb-3">
+            <AlertCircle className="w-5 h-5 text-amber-500" />
           </div>
-          <h2 className="text-base font-bold text-white mb-2">Display Mode Recovery</h2>
-          <p className="text-xs text-[#8b949e] max-w-md mb-5 leading-relaxed">
-            The view encountered a rendering anomaly. The platform has automatically isolated the issue to keep your session and telemetry active.
+          <h2 className="text-sm font-semibold text-[var(--text-primary)] mb-1.5">
+            Display mode recovery
+          </h2>
+          <p className="text-xs text-[var(--text-muted)] max-w-sm mb-4 leading-relaxed">
+            The view encountered a rendering anomaly. Your session and telemetry remain active.
           </p>
-          <button
+          <Button
+            size="sm"
+            variant="secondary"
+            icon={<RefreshCw className="w-3.5 h-3.5" />}
             onClick={() => {
               this.setState({ hasError: false, error: null });
               window.location.reload();
             }}
-            className="px-4 py-2 bg-sky-500 hover:bg-sky-400 text-[#002447] text-xs font-bold rounded-xl transition-colors cursor-pointer shadow-md"
           >
-            Reload View
-          </button>
+            Reload view
+          </Button>
         </div>
       );
     }
@@ -69,15 +76,22 @@ function MainLayoutContent() {
   const { isCollapsed } = useLayout();
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#0A0C10]">
+    <div className="flex h-screen w-screen overflow-hidden bg-[var(--bg-base)] text-[var(--text-primary)] relative">
+      {/* Aurora Light ambient background orbs */}
+      <div className="aurora-bg-decor" aria-hidden="true">
+        <div className="aurora-orb-violet" />
+        <div className="aurora-orb-sky" />
+        <div className="aurora-orb-mint" />
+      </div>
+
       <Sidebar />
       <div
-        className={`flex flex-col flex-1 overflow-hidden transition-all duration-300 ease-in-out ${
-          isCollapsed ? 'ml-[68px]' : 'ml-[240px]'
+        className={`flex flex-col flex-1 overflow-hidden transition-[margin] duration-150 ease-out relative z-10 ${
+          isCollapsed ? 'ml-[64px]' : 'ml-[240px]'
         }`}
       >
         <Header />
-        <main className="flex-1 overflow-y-auto bg-[#0A0C10]">
+        <main className="flex-1 overflow-y-auto bg-transparent relative">
           <ErrorBoundary>
             <Outlet />
           </ErrorBoundary>
@@ -89,10 +103,12 @@ function MainLayoutContent() {
 
 export function Layout() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <LayoutProvider>
-        <MainLayoutContent />
-      </LayoutProvider>
-    </QueryClientProvider>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <LayoutProvider>
+          <MainLayoutContent />
+        </LayoutProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 }
