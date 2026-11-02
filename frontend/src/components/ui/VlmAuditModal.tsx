@@ -131,6 +131,12 @@ export function VlmAuditModal({
   const edge = vlmData?.edge_telemetry;
   const semantic = audit?.semantic_analysis;
 
+  const rawModel = audit?.model_name || vlmData?.model_used;
+  const isGoogle = audit?.source?.startsWith('GOOGLE') || vlmData?.provider === 'gemini';
+  const isSimulated = audit?.is_simulated ?? false;
+  const displayModel = rawModel || VLM_MODEL_NAME;
+  const engineTitle = isGoogle ? 'Gemini Multimodal VLM Verification' : VLM_ENGINE_LABEL;
+
   const resolvedEvidenceUrl = getEvidenceUrl(evidenceUrl);
 
   return (
@@ -149,11 +155,22 @@ export function VlmAuditModal({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-xs font-semibold text-[var(--text-primary)]">
-                  {VLM_ENGINE_LABEL}
+                  {engineTitle}
                 </h3>
-                <span className="text-[10px] font-mono text-[var(--text-muted)] px-1.5 py-0.2 rounded bg-[var(--surface-raised)] border border-[var(--border-subtle)]">
-                  {VLM_MODEL_NAME}
-                </span>
+                {audit ? (
+                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded border flex items-center gap-1.5 ${
+                    !isSimulated 
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 font-medium'
+                      : 'bg-[var(--surface-raised)] border-[var(--border-subtle)] text-[var(--text-muted)]'
+                  }`}>
+                    {!isSimulated && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
+                    {displayModel} {!isSimulated ? '· Live API' : ''}
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-mono text-[var(--text-muted)] px-1.5 py-0.2 rounded bg-[var(--surface-raised)] border border-[var(--border-subtle)]">
+                    {VLM_MODEL_NAME}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -206,7 +223,7 @@ export function VlmAuditModal({
                 Performing semantic verification...
               </p>
               <p className="text-[11px] text-[var(--text-muted)]">
-                Running private on-premise VLM ({VLM_MODEL_NAME}) on edge crop.
+                Running multimodal VLM reasoning ({VLM_MODEL_NAME}) on edge crop.
               </p>
             </div>
           ) : activeTab === 'visual' ? (
@@ -282,10 +299,22 @@ export function VlmAuditModal({
                     Inference: {edge?.inference_latency_ms || 14.2} ms (Edge) + {audit?.latency_ms || 420} ms (VLM)
                   </span>
                 </div>
-                <div className="flex items-center gap-2 text-[11px] text-[var(--text-secondary)] font-mono">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-[var(--text-secondary)] font-mono">
                   <span>GPS: {lat.toFixed(5)}, {lon.toFixed(5)}</span>
                   <span>·</span>
-                  <span>Engine: YOLOv8n + {VLM_MODEL_NAME}</span>
+                  <span>Engine: YOLOv8n + {displayModel}</span>
+                  {audit?.tokens_used ? (
+                    <>
+                      <span>·</span>
+                      <span className="text-emerald-400">{audit.tokens_used} tokens</span>
+                    </>
+                  ) : null}
+                  {audit?.api_endpoint ? (
+                    <>
+                      <span>·</span>
+                      <span className="text-[var(--text-muted)]">{audit.api_endpoint}</span>
+                    </>
+                  ) : null}
                 </div>
               </div>
             </div>
